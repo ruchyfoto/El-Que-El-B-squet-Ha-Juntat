@@ -106,3 +106,27 @@ textarea{min-height:84px;resize:vertical}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:20;max-width:calc(100vw - 32px)}
 @media (prefers-reduced-motion:reduce){.bar i{transition:none}}
 body{margin:0}
+
+/* jocs diaris */
+.game{border:1px solid var(--line);background:var(--soft);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.game:first-of-type{margin-top:0}
+.game .k{font:800 14px var(--display);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.game .qt{margin:0;font-size:18px;font-weight:600;line-height:1.35;text-wrap:balance}
+.game .btn{margin-top:8px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (max-width:560px){.pair{grid-template-columns:1fr}}
+.ans{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+.ans p{margin:4px 0 0;overflow-wrap:anywhere}
+.nm2{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:13px;letter-spacing:.05em;text-transform:uppercase}
+.trow{display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px solid var(--line);font-size:14px}
+.trow:first-of-type{border-top:0;padding-top:0}
+.trow .tt{font-weight:700}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opt{border:1.5px solid var(--line);background:var(--surface);border-radius:10px;padding:10px 12px;font-weight:600;text-align:center;overflow-wrap:anywhere}
+.opt:hover{border-color:var(--fg)}
+.hist{margin-top:12px;font-size:14px}
+.hist summary{cursor:pointer;color:var(--muted);font-weight:600}
+.pday{padding:10px 0;border-top:1px solid var(--line);margin-top:8px}
+.pday .lv{font:800 13px var(--display);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.pday .ph{font-weight:700;margin-top:4px}
+.pday .pl{overflow-wrap:anywhere}
