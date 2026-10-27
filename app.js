@@ -90,7 +90,7 @@ var T=[
 var QPTS=2,TPTS=1;
 
 
-var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
+var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},colors:{a:null,b:null},colorsOpen:false,who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
 try{S.who=localStorage.getItem('who')||null;}catch(e){}
 
 function h(tag,props){
@@ -230,6 +230,39 @@ function renderGames(){
   z.replaceChildren(h('section',{class:'card'},h('h2',null,'Jocs d\'avui'),
     h('p',{class:'tiny',style:'margin:-4px 0 12px'},'Es reveles quan heu respost tots dos. Màxim '+(QPTS+3*TPTS)+' punts al dia.'),
     qcard,tcard,hist));
+}
+
+/* ---------- colors ---------- */
+var PAL=[['Taronja','#F26A1B'],['Verd blavós','#14A3A8'],['Rosa','#E8508A'],['Lila','#8B6CF0'],['Blau','#3C82F6'],['Verd','#2FA866'],['Groc','#E5B91A'],['Vermell','#E04848'],['Magenta','#C03BC4'],['Gris','#8A94A6']];
+function rgb(hex){var m=/^#?([0-9a-f]{6})$/i.exec(String(hex).trim());if(!m)return null;var n=parseInt(m[1],16);return [n>>16&255,n>>8&255,n&255];}
+function lum(hex){var c=rgb(hex);if(!c)return 0;var f=function(v){v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4);};return .2126*f(c[0])+.7152*f(c[1])+.0722*f(c[2]);}
+function applyColors(){
+  var root=document.documentElement;
+  ['a','b'].forEach(function(p){
+    var c=S.colors[p];
+    if(c){root.style.setProperty('--'+p,c);root.style.setProperty('--on-'+p,lum(c)>.4?'#0A1122':'#FFFFFF');}
+    else{root.style.removeProperty('--'+p);root.style.removeProperty('--on-'+p);}
+  });
+}
+function effColor(p){return S.colors[p]||getComputedStyle(document.documentElement).getPropertyValue('--'+p).trim();}
+function tooClose(c1,c2){var x=rgb(c1),y=rgb(c2);if(!x||!y)return false;return Math.sqrt(Math.pow(x[0]-y[0],2)+Math.pow(x[1]-y[1],2)+Math.pow(x[2]-y[2],2))<70;}
+function pickColor(c){
+  var o=other(S.who);
+  if(tooClose(c,effColor(o))){toast('Massa semblant al color de '+nm(o)+'. Tria\'n un altre.');return;}
+  api.savePref({player:S.who,color:c.toLowerCase()}).then(function(){toast('Color guardat');}).catch(function(e){toast(saveErr(e));});
+}
+function renderColors(){
+  var z=$('colors');
+  if(!ready()||!S.who||!S.colorsOpen){z.replaceChildren();return;}
+  var cur=(S.colors[S.who]||'').toLowerCase();
+  var picker=h('input',{type:'color',id:'cpick','aria-label':'Altre color',value:cur||'#f26a1b'});
+  picker.addEventListener('change',function(){pickColor(picker.value);});
+  z.replaceChildren(h('section',{class:'card'},h('h2',null,'El teu color'),
+    h('p',{class:'tiny',style:'margin:-4px 0 12px'},'Només canvies el teu color, '+nm(S.who)+'. Es veu igual als dos mòbils.'),
+    h('div',{class:'sw'},PAL.map(function(p){
+      return h('button',{class:'swb',type:'button','aria-label':p[0],'aria-pressed':String(cur===p[1].toLowerCase()),style:'background:'+p[1],onclick:function(){pickColor(p[1]);}});
+    }),h('label',{class:'swc'},'Altre',picker)),
+    h('div',{style:'margin-top:12px'},h('button',{class:'link',type:'button',onclick:function(){api.delPref(S.who).then(function(){toast('Color per defecte');}).catch(function(e){toast(saveErr(e));});}},'Tornar al color per defecte'))));
 }
 
 /* ---------- renders ---------- */
@@ -427,7 +460,8 @@ function renderChallengeCard(){
 function renderAll(){
   $('btn-names').hidden=!(S.authed&&S.cfgLoaded&&ready()&&!(cfg.names&&cfg.names[0]&&cfg.names[1]));
   $('btn-out').hidden=!S.authed;
-  renderTop();renderBoard();renderChallengeCard();renderGames();renderAdd();renderRewards();renderWall();
+  $('btn-colors').hidden=!(S.authed&&ready()&&S.who);
+  renderTop();renderBoard();renderColors();renderChallengeCard();renderGames();renderAdd();renderRewards();renderWall();
 }
 
 /* challenge slot lives above the form */
@@ -450,6 +484,8 @@ function chk(r){if(r&&r.error)throw r.error;return r;}
 var api={
   saveNames:function(a,b){return sb.from('pp_config').upsert({id:1,name_a:a,name_b:b}).then(chk).then(loadAll);},
   addMoment:function(m){return sb.from('pp_moments').insert(m).then(chk).then(loadAll);},
+  savePref:function(r){return sb.from('pp_prefs').upsert(r).then(chk).then(loadAll);},
+  delPref:function(p){return sb.from('pp_prefs').delete().eq('player',p).then(chk).then(loadAll);},
   saveAnswer:function(r){return sb.from('pp_answers').insert(r).then(chk).then(loadAll);},
   saveReward:function(r){return sb.from('pp_rewards').upsert(r).then(chk).then(loadAll);},
   deleteMoment:function(id){return sb.from('pp_moments').delete().eq('id',id).then(chk).then(loadAll);}
@@ -479,7 +515,8 @@ function loadAll(){
     sb.from('pp_config').select('*').eq('id',1).maybeSingle(),
     sb.from('pp_moments').select('*').order('ts',{ascending:false}).limit(1000),
     sb.from('pp_rewards').select('*'),
-    sb.from('pp_answers').select('*').order('day',{ascending:false}).limit(2000)
+    sb.from('pp_answers').select('*').order('day',{ascending:false}).limit(2000),
+    sb.from('pp_prefs').select('*')
   ]).then(function(rs){
     var c=rs[0].data;
     var fx=cfg.names;
@@ -489,6 +526,7 @@ function loadAll(){
     var r={};(rs[2].data||[]).forEach(function(x){r[x.player+'-'+x.level]={player:x.player,level:x.level,text:x.text};});
     S.rewards=r;
     S.answers=(rs[3].data||[]).map(function(x){return {day:x.day,game:x.game,slot:x.slot,player:x.player,answer:x.answer,prompt:x.prompt};});
+    S.colors={a:null,b:null};(rs[4].data||[]).forEach(function(x){if(x.player==='a'||x.player==='b')S.colors[x.player]=x.color;});applyColors();
     S.ai={};S.answers.forEach(function(a){S.ai[a.day+'|'+a.game+'|'+a.slot+'|'+a.player]=a;});
     if(S.editNames||document.activeElement&&(document.activeElement.id==='phrase'||document.activeElement.id==='qans')){
       renderBoard();renderChallengeCard();renderRewards();renderWall();
@@ -503,8 +541,9 @@ function start(){
   sb.channel('punts').on('postgres_changes',{event:'*',schema:'public'},function(){loadAll();}).subscribe();
   loadAll();
 }
+$('btn-colors').addEventListener('click',function(){S.colorsOpen=!S.colorsOpen;renderColors();});
 $('btn-out').addEventListener('click',function(){
-  sb.auth.signOut().then(function(){S.authed=false;S.cfgLoaded=false;S.names=null;S.moments=[];S.rewards={};started=false;renderAll();});
+  sb.auth.signOut().then(function(){S.authed=false;S.colorsOpen=false;S.colors={a:null,b:null};applyColors();S.cfgLoaded=false;S.names=null;S.moments=[];S.rewards={};started=false;renderAll();});
 });
 if(!window.supabase||!cfg.url||cfg.url.indexOf('http')!==0||!cfg.key||/EL-TEU|LA-TEVA/.test(cfg.url+cfg.key)){S.setup=true;renderAll();}
 else{

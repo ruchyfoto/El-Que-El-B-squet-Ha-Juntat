@@ -130,3 +130,10 @@ body{margin:0}
 .pday .lv{font:800 13px var(--display);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
 .pday .ph{font-weight:700;margin-top:4px}
 .pday .pl{overflow-wrap:anywhere}
+
+/* colors */
+.sw{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.swb{width:40px;height:40px;border-radius:50%;border:3px solid var(--surface);box-shadow:0 0 0 1.5px var(--line)}
+.swb[aria-pressed="true"]{box-shadow:0 0 0 3px var(--fg)}
+.swc{display:inline-flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:var(--muted)}
+.swc input{width:40px;height:40px;padding:0;border:0;background:none;border-radius:50%;cursor:pointer}
