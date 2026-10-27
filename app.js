@@ -159,7 +159,7 @@ function gamePts(p){
 var gSaving=false;
 function saveAns(row,after){
   if(gSaving)return;gSaving=true;
-  api.saveAnswer(row).then(function(){if(after)after();}).catch(function(){toast('No s\'ha pogut guardar la resposta.');}).then(function(){gSaving=false;});
+  api.saveAnswer(row).then(function(){if(after)after();}).catch(function(e){toast(saveErr(e));}).then(function(){gSaving=false;});
 }
 function nameChip(p){return h('span',{class:'nm2'},h('span',{class:'dot',style:'background:var(--'+p+')'}),nm(p));}
 function renderGames(){
@@ -265,7 +265,7 @@ function renderTop(){
       if(!a||!c||a.toLowerCase()===c.toLowerCase()){toast('Escriu dos noms diferents.');return;}
       b.disabled=true;
       api.saveNames(a,c).then(function(){S.editNames=false;toast('Noms guardats');})
-        .catch(function(){toast('No s\'ha pogut guardar els noms.');})
+        .catch(function(e){toast(saveErr(e));})
         .then(function(){b.disabled=false;});
     }},'Guardar noms');
     box.append(h('section',{class:'card'},h('h2',null,'Qui juga?'),
@@ -325,7 +325,7 @@ function renderAdd(){
     var c=catOf(S.cat),now=new Date();
     api.addMoment({speaker:S.speaker,cat:c.k,pts:c.p,text:txt,day:dayKey(now),wk:WEEK.key})
       .then(function(){ta.value='';toast('+'+c.p+' per a '+nm(S.speaker));})
-      .catch(function(e){toast('No s\'ha pogut guardar. Comprova la connexió i torna-ho a provar.');})
+      .catch(function(e){toast(saveErr(e));})
       .then(function(){S.saving=false;submit.disabled=false;});
   });
   var rd=reptDone(sp);
@@ -371,7 +371,7 @@ function renderRewards(){
           var t=inp.value.trim();if(t.length<2){toast('Escriu el premi.');return;}
           sv.disabled=true;
           api.saveReward({player:p,level:n,text:t})
-            .catch(function(){toast('No s\'ha pogut guardar el premi.');sv.disabled=false;});
+            .catch(function(e){toast(saveErr(e));sv.disabled=false;});
         }},'Guardar');
         body=h('div',{class:'row'},inp,sv);
       } else body=h('div',{class:'pend'},'Pendent: '+nm(o)+' l\'ha d\'inventar');
@@ -395,7 +395,7 @@ function renderWall(){
     var d=new Date(m.ts),c=catOf(m.cat);
     var del;
     if(S.confirmDel===m.id)del=h('span',null,
-      h('button',{class:'link',type:'button',onclick:function(){S.confirmDel=null;api.deleteMoment(m.id).catch(function(){toast('No s\'ha pogut esborrar.');});}},'Esborrar de debò'),' ',
+      h('button',{class:'link',type:'button',onclick:function(){S.confirmDel=null;api.deleteMoment(m.id).catch(function(e){toast(saveErr(e));});}},'Esborrar de debò'),' ',
       h('button',{class:'link',type:'button',onclick:function(){S.confirmDel=null;renderWall();}},'Cancel·lar'));
     else del=h('button',{class:'link',type:'button',onclick:function(){S.confirmDel=m.id;renderWall();}},'Esborrar');
     wall.append(h('article',{class:'mom'},
@@ -424,7 +424,7 @@ function renderChallengeCard(){
 }
 
 function renderAll(){
-  $('btn-names').hidden=!(S.authed&&S.cfgLoaded&&ready());
+  $('btn-names').hidden=!(S.authed&&S.cfgLoaded&&ready()&&!(cfg.names&&cfg.names[0]&&cfg.names[1]));
   $('btn-out').hidden=!S.authed;
   renderTop();renderBoard();renderChallengeCard();renderGames();renderAdd();renderRewards();renderWall();
 }
@@ -445,6 +445,13 @@ var api={
   saveReward:function(r){return sb.from('pp_rewards').upsert(r).then(chk).then(loadAll);},
   deleteMoment:function(id){return sb.from('pp_moments').delete().eq('id',id).then(chk).then(loadAll);}
 };
+function saveErr(e){
+  var m=String(e&&e.message||e||'');
+  if(/row-level security|permission|policy/i.test(m))return 'No tens permís: el teu correu no és a pp_allowed (o falta executar supabase.sql).';
+  if(/does not exist|schema cache|relation|Could not find/i.test(m))return 'Falta una taula a Supabase: executa supabase.sql i supabase_jocs.sql.';
+  if(/fetch|network|load failed/i.test(m))return 'No puc connectar amb Supabase.';
+  return 'No s\'ha pogut guardar: '+m;
+}
 function loginMsg(e){
   var m=String(e&&e.message||e||'');
   if(/invalid login/i.test(m))return 'Correu o contrasenya incorrectes, o l\'usuari no existeix en aquest projecte.';
@@ -466,7 +473,8 @@ function loadAll(){
     sb.from('pp_answers').select('*').order('day',{ascending:false}).limit(2000)
   ]).then(function(rs){
     var c=rs[0].data;
-    S.names=c?{a:c.name_a,b:c.name_b}:null;S.cfgLoaded=true;
+    var fx=cfg.names;
+    S.names=(fx&&fx.length===2&&fx[0]&&fx[1])?{a:String(fx[0]),b:String(fx[1])}:(c?{a:c.name_a,b:c.name_b}:null);S.cfgLoaded=true;
     if(S.who&&!S.speaker)S.speaker=other(S.who);
     S.moments=(rs[1].data||[]).map(function(x){return {id:x.id,speaker:x.speaker,cat:x.cat,pts:x.pts,text:x.text,ts:new Date(x.ts).getTime(),day:x.day,wk:x.wk};});
     var r={};(rs[2].data||[]).forEach(function(x){r[x.player+'-'+x.level]={player:x.player,level:x.level,text:x.text};});
