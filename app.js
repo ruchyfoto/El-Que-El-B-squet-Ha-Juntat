@@ -89,7 +89,7 @@ function renderTop(){
     function submit(){
       if(!em.value.trim()||!pw.value){toast('Escriu el correu i la contrasenya.');return;}
       go.disabled=true;
-      login(em.value.trim(),pw.value).catch(function(){toast('Correu o contrasenya incorrectes.');}).then(function(){go.disabled=false;});
+      login(em.value.trim(),pw.value).catch(function(e){toast(loginMsg(e));}).then(function(){go.disabled=false;});
     }
     go.addEventListener('click',submit);
     pw.addEventListener('keydown',function(e){if(e.key==='Enter')submit();});
@@ -281,11 +281,19 @@ var cfg=window.PUNTS_CONFIG||{};
 var sb=null;
 function chk(r){if(r&&r.error)throw r.error;return r;}
 var api={
-  saveNames:function(a,b){return sb.from('config').upsert({id:1,name_a:a,name_b:b}).then(chk).then(loadAll);},
-  addMoment:function(m){return sb.from('moments').insert(m).then(chk).then(loadAll);},
-  saveReward:function(r){return sb.from('rewards').upsert(r).then(chk).then(loadAll);},
-  deleteMoment:function(id){return sb.from('moments').delete().eq('id',id).then(chk).then(loadAll);}
+  saveNames:function(a,b){return sb.from('pp_config').upsert({id:1,name_a:a,name_b:b}).then(chk).then(loadAll);},
+  addMoment:function(m){return sb.from('pp_moments').insert(m).then(chk).then(loadAll);},
+  saveReward:function(r){return sb.from('pp_rewards').upsert(r).then(chk).then(loadAll);},
+  deleteMoment:function(id){return sb.from('pp_moments').delete().eq('id',id).then(chk).then(loadAll);}
 };
+function loginMsg(e){
+  var m=String(e&&e.message||e||'');
+  if(/invalid login/i.test(m))return 'Correu o contrasenya incorrectes, o l\'usuari no existeix en aquest projecte.';
+  if(/not confirmed/i.test(m))return 'Falta confirmar el correu: a Supabase, obre l\'usuari i confirma\'l.';
+  if(/fetch|network|load failed/i.test(m))return 'No puc connectar amb Supabase. Revisa la URL de config.js.';
+  if(/api key|apikey|jwt/i.test(m))return 'La clau de config.js no és vàlida per a aquest projecte.';
+  return 'Error: '+m;
+}
 function login(email,pass){
   return sb.auth.signInWithPassword({email:email,password:pass}).then(function(r){
     if(r.error)throw r.error;S.authed=true;start();
@@ -293,9 +301,9 @@ function login(email,pass){
 }
 function loadAll(){
   return Promise.all([
-    sb.from('config').select('*').eq('id',1).maybeSingle(),
-    sb.from('moments').select('*').order('ts',{ascending:false}).limit(1000),
-    sb.from('rewards').select('*')
+    sb.from('pp_config').select('*').eq('id',1).maybeSingle(),
+    sb.from('pp_moments').select('*').order('ts',{ascending:false}).limit(1000),
+    sb.from('pp_rewards').select('*')
   ]).then(function(rs){
     var c=rs[0].data;
     S.names=c?{a:c.name_a,b:c.name_b}:null;S.cfgLoaded=true;
@@ -319,7 +327,7 @@ function start(){
 $('btn-out').addEventListener('click',function(){
   sb.auth.signOut().then(function(){S.authed=false;S.cfgLoaded=false;S.names=null;S.moments=[];S.rewards={};started=false;renderAll();});
 });
-if(!window.supabase||!cfg.url||cfg.url.indexOf('http')!==0||!cfg.key){S.setup=true;renderAll();}
+if(!window.supabase||!cfg.url||cfg.url.indexOf('http')!==0||!cfg.key||/EL-TEU|LA-TEVA/.test(cfg.url+cfg.key)){S.setup=true;renderAll();}
 else{
   sb=window.supabase.createClient(cfg.url,cfg.key);
   renderAll();
