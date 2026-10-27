@@ -237,7 +237,8 @@ function renderTop(){
   var box=h('div');
   if(S.setup){
     box.append(h('section',{class:'card'},h('h2',null,'Falta configurar'),
-      h('p',{style:'margin:0'},'Obre config.js i enganxa-hi la URL i la clau pública del teu projecte de Supabase.')));
+      h('p',{style:'margin:0 0 8px'},'Obre config.js i enganxa-hi la URL i la clau pública del teu projecte de Supabase.'),
+      h('p',{class:'tiny',style:'margin:0'},'Diagnòstic: '+setupWhy())));
     put('top',box);return;
   }
   if(!S.authed){
@@ -436,6 +437,14 @@ $('btn-names').addEventListener('click',function(){S.editNames=!S.editNames;rend
 
 /* ---------- Supabase ---------- */
 var cfg=window.PUNTS_CONFIG||{};
+function setupWhy(){
+  if(!window.supabase)return 'no s\'ha carregat la llibreria de Supabase (comprova la connexió o que index.html la inclogui).';
+  if(!window.PUNTS_CONFIG)return 'config.js no s\'ha carregat o té un error d\'escriptura (falta una coma, una cometa o una clau }).';
+  if(!cfg.url||cfg.url.indexOf('http')!==0)return 'la URL de config.js no comença per https://.';
+  if(!cfg.key)return 'falta la clau (key) a config.js.';
+  if(/EL-TEU|LA-TEVA/.test(cfg.url+cfg.key))return 'config.js encara té els valors d\'exemple (o la pàgina mostra una còpia antiga: prova Ctrl+Shift+R).';
+  return 'desconegut.';
+}
 var sb=null;
 function chk(r){if(r&&r.error)throw r.error;return r;}
 var api={
