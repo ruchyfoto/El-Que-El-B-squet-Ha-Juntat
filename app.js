@@ -90,7 +90,7 @@ var T=[
 var QPTS=2,TPTS=1;
 
 
-var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},hugs:[],colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
+var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},hugs:[],places:{a:null,b:null},letters:[],ltr:null,openL:null,editPlace:false,lsig:'',colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
 try{S.who=localStorage.getItem('who')||null;}catch(e){}
 
 function h(tag,props){
@@ -272,6 +272,175 @@ function renderHugs(){
   if(rows.length)parts.push(h('div',{class:'hugs'},rows));
   z.replaceChildren(h('section',{class:'card'},h('h2',null,'Abraçades'),parts));
 }
+
+/* ---------- cartes ---------- */
+var TRANSPORTS=[
+ {k:'colom',n:'Colom missatger',kmh:55,road:1,over:0,d:'Vola en línia recta, sense pressa.',
+  svg:'<path d="M3 16c3 1 6 0 8-3l2-4 2 3 5 1-4 2c-1 4-5 6-9 5l-3 2z"/><circle cx="15.5" cy="9.5" r=".6"/>'},
+ {k:'cotxe',n:'Cotxe',kmh:80,road:1.25,over:0,d:'Per carretera.',
+  svg:'<path d="M3 15l2-5h14l2 5v3h-3v-2H6v2H3z"/><path d="M5 10l1.5-3h11L19 10"/><circle cx="7.5" cy="16" r="1"/><circle cx="16.5" cy="16" r="1"/>'},
+ {k:'vaixell',n:'Vaixell',kmh:30,road:1.15,over:240,d:'Lent, però segur. Inclou 4 h de càrrega.',
+  svg:'<path d="M3 16h18l-2.5 4h-13z"/><path d="M12 3v13"/><path d="M12 4l6 9h-6"/><path d="M12 6L7 13h5"/>'},
+ {k:'avio',n:'Avió',kmh:800,road:1,over:120,d:'El més ràpid. Inclou 2 h d\'aeroport.',
+  svg:'<path d="M21 3L3 10l7 3 3 7z"/><path d="M10 13l5-5"/>'}
+];
+function trOf(k){return TRANSPORTS.filter(function(t){return t.k===k;})[0]||TRANSPORTS[0];}
+function icon(t){var s=document.createElement('span');s.className='ico';s.innerHTML='<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+t.svg+'</svg>';return s;}
+function haversine(a,b,c,d){
+  var R=6371,r=Math.PI/180,dl=(c-a)*r,dn=(d-b)*r;
+  var x=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a*r)*Math.cos(c*r)*Math.sin(dn/2)*Math.sin(dn/2);
+  return 2*R*Math.asin(Math.min(1,Math.sqrt(x)));
+}
+function distKm(){var a=S.places.a,b=S.places.b;return(a&&b)?haversine(+a.lat,+a.lon,+b.lat,+b.lon):null;}
+function etaMin(t,km){return Math.max(1,Math.round(t.over+km*t.road/t.kmh*60));}
+function fmtDur(min){
+  min=Math.max(0,Math.round(min));
+  if(min<60)return min+' min';
+  var h=Math.floor(min/60),m=min%60;
+  if(h<48)return h+' h'+(m?' '+m+' min':'');
+  var d=Math.floor(h/24),hh=h%24;return d+(d===1?' dia':' dies')+(hh?' '+hh+' h':'');
+}
+function fmtClock(ts){
+  var d=new Date(ts),n=new Date(),t=dayKey(d),today=dayKey(n),tm=new Date(n.getTime()+864e5);
+  var hm=pad(d.getHours())+':'+pad(d.getMinutes());
+  if(t===today)return 'avui a les '+hm;
+  if(t===dayKey(tm))return 'demà a les '+hm;
+  return d.toLocaleDateString('ca',{day:'numeric',month:'long'})+' a les '+hm;
+}
+function fmtKm(km){return Math.round(km).toLocaleString('ca')+' km';}
+function searchCity(q){
+  return fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(q)+'&count=6&language=ca&format=json')
+    .then(function(r){if(!r.ok)throw new Error('geo');return r.json();})
+    .then(function(j){return (j.results||[]).map(function(x){return {name:[x.name,x.admin1,x.country].filter(Boolean).join(', '),lat:x.latitude,lon:x.longitude};});});
+}
+var lSaving=false;
+function lAct(fn,msg){
+  if(lSaving)return Promise.resolve();lSaving=true;
+  return fn().then(function(){if(msg)toast(msg);}).catch(function(e){toast(saveErr(e));}).then(function(){lSaving=false;});
+}
+function placePicker(){
+  var q=h('input',{type:'text',id:'cityq',maxlength:'60',placeholder:'La teva ciutat o poble',autocomplete:'off'});
+  var res=h('div',{class:'cityres'});
+  var go=h('button',{class:'btn sm',type:'button'},'Cercar');
+  function showManual(){
+    var nmI=h('input',{type:'text',id:'mname',maxlength:'60',placeholder:'Nom del lloc'});
+    var la=h('input',{type:'text',id:'mlat',inputmode:'decimal',placeholder:'Latitud (ex. 41.39)'});
+    var lo=h('input',{type:'text',id:'mlon',inputmode:'decimal',placeholder:'Longitud (ex. 2.17)'});
+    var sv=h('button',{class:'btn sm',type:'button',onclick:function(){
+      var a=parseFloat(String(la.value).replace(',','.')),b=parseFloat(String(lo.value).replace(',','.'));
+      if(!nmI.value.trim()||!isFinite(a)||!isFinite(b)||Math.abs(a)>90||Math.abs(b)>180){toast('Revisa el nom i les coordenades.');return;}
+      savePlace(nmI.value.trim(),a,b);
+    }},'Guardar');
+    res.append(h('p',{class:'tiny',style:'margin:8px 0'},'No trobo el lloc. Pots escriure les coordenades (a Google Maps, clic dret sobre el mapa):'),nmI,la,lo,sv);
+  }
+  function doSearch(){
+    var v=q.value.trim();if(v.length<2){toast('Escriu el nom d\'una ciutat.');return;}
+    res.replaceChildren(h('p',{class:'tiny'},'Cercant…'));
+    searchCity(v).then(function(list){
+      res.replaceChildren();
+      if(!list.length){showManual();return;}
+      list.forEach(function(x){res.append(h('button',{class:'cityopt',type:'button',onclick:function(){savePlace(x.name,x.lat,x.lon);}},x.name));});
+    }).catch(function(){res.replaceChildren();res.append(h('p',{class:'tiny'},'No puc cercar ara.'));showManual();});
+  }
+  go.addEventListener('click',doSearch);
+  q.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
+  return h('div',null,h('div',{class:'row'},q,go),res);
+}
+function savePlace(name,lat,lon){
+  lAct(function(){return api.savePlace({player:S.who,name:name,lat:lat,lon:lon});},'Ubicació guardada').then(function(){S.editPlace=false;S.lsig='';renderLetters();});
+}
+function renderLetters(){
+  var z=$('letters');
+  if(!ready()||!S.who){z.replaceChildren();return;}
+  var me=S.who,ot=other(me);
+  var sig=JSON.stringify([me,S.names,S.places,S.editPlace]);
+  if(S.lsig!==sig||!z.firstChild){
+    var prev=document.getElementById('ltext'),keep=prev?prev.value:'';
+    var mine=S.places[me],theirs=S.places[ot],km=distKm(),parts=[];
+    if(!mine||S.editPlace){
+      parts.push(h('p',{class:'tiny',style:'margin:0 0 10px'},mine?'Tria la teva nova ubicació.':'Per calcular quant triga una carta, digues on ets. Només es guarda el nom de la ciutat i la seva posició aproximada.'),placePicker());
+      if(mine)parts.push(h('button',{class:'link',type:'button',onclick:function(){S.editPlace=false;S.lsig='';renderLetters();}},'Cancel·lar'));
+    }else{
+      parts.push(h('p',{class:'tiny',style:'margin:0 0 12px'},
+        nm(me)+': '+mine.name+(theirs?' · '+nm(ot)+': '+theirs.name+' · '+fmtKm(km)+' entre vosaltres':' · Falta que '+nm(ot)+' digui on és.'),' ',
+        h('button',{class:'link',type:'button',onclick:function(){S.editPlace=true;S.lsig='';renderLetters();}},'Canviar la meva ubicació')));
+    }
+    if(mine&&theirs&&!S.editPlace){
+      var ta=h('textarea',{id:'ltext',maxlength:'2000',placeholder:'Escriu la carta per a '+nm(ot)+'…'});ta.value=keep;
+      var send=h('button',{class:'btn '+me,type:'button',id:'lsend'},'Enviar carta');
+      var opts=TRANSPORTS.map(function(t){
+        var m=etaMin(t,km);
+        return h('button',{class:'tr',type:'button','data-k':t.k,'aria-pressed':String(S.ltr===t.k),onclick:function(ev){
+          S.ltr=t.k;Array.prototype.forEach.call(document.querySelectorAll('#letters .tr'),function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-k')===t.k));});
+          document.getElementById('lsend').textContent='Enviar carta amb '+t.n.toLowerCase();
+        }},icon(t),h('span',{class:'tn'},t.n),h('span',{class:'te'},fmtDur(m)),h('span',{class:'td'},t.d));
+      });
+      send.addEventListener('click',function(){
+        var txt=ta.value.trim();
+        if(txt.length<2){toast('Escriu la carta abans d\'enviar-la.');ta.focus();return;}
+        if(!S.ltr){toast('Tria com viatjarà la carta.');return;}
+        var t=trOf(S.ltr),m=etaMin(t,km);
+        send.disabled=true;
+        lAct(function(){return api.sendLetter({from_player:me,to_player:ot,transport:t.k,distance_km:Math.round(km),duration_min:m,body:txt});},'Carta enviada. Arribarà '+fmtClock(Date.now()+m*60000)+'.')
+          .then(function(){ta.value='';send.disabled=false;});
+      });
+      if(S.ltr)send.textContent='Enviar carta amb '+trOf(S.ltr).n.toLowerCase();
+      parts.push(h('span',{class:'lab'},'Nova carta'),ta,h('span',{class:'lab'},'Com viatjarà?'),h('div',{class:'trs'},opts),send);
+    }
+    parts.push(h('div',{id:'llists'}));
+    z.replaceChildren(h('section',{class:'card'},h('h2',null,'Cartes'),parts));
+    S.lsig=sig;
+  }
+  renderLetterLists();
+}
+function renderLetterLists(){
+  var box=document.getElementById('llists');if(!box)return;
+  var me=S.who,ot=other(me),now=Date.now(),out=[];
+  var ls=S.letters.slice().sort(function(a,b){return b.sent-a.sent;});
+  var transit=ls.filter(function(x){return x.arrive>now;}),arrived=ls.filter(function(x){return x.arrive<=now;});
+  if(transit.length){
+    out.push(h('span',{class:'lab'},'En camí'));
+    transit.forEach(function(x){
+      var t=trOf(x.transport),tot=Math.max(1,x.arrive-x.sent),pct=Math.min(100,Math.max(2,(now-x.sent)/tot*100));
+      var mineL=x.from_player===me;
+      out.push(h('div',{class:'lt'},
+        h('div',{class:'lth'},icon(t),h('div',null,
+          h('div',{class:'ltt'},mineL?'Per a '+nm(x.to_player)+' · '+t.n.toLowerCase():'De '+nm(x.from_player)+' · '+t.n.toLowerCase()),
+          h('div',{class:'tiny'},'Arriba d\'aquí '+fmtDur((x.arrive-now)/60000)+' ('+fmtClock(x.arrive)+') · '+fmtKm(x.distance_km)))),
+        h('div',{class:'prog'},h('i',{style:'width:'+pct+'%'})),
+        mineL?h('div',{class:'lbody'},x.body):null));
+    });
+  }
+  if(arrived.length){
+    out.push(h('span',{class:'lab'},'Arribades'));
+    arrived.slice(0,15).forEach(function(x){
+      var t=trOf(x.transport),mineL=x.from_player===me,t0=h('div',{class:'ltt'});
+      if(mineL){
+        out.push(h('div',{class:'lt'},h('div',{class:'lth'},icon(t),h('div',null,
+          h('div',{class:'ltt'},'Enviada a '+nm(x.to_player)+' · '+t.n.toLowerCase()),
+          h('div',{class:'tiny'},'Va arribar '+fmtClock(x.arrive)+(x.read?' · llegida':' · encara sense llegir')))),
+          h('div',{class:'lbody'},x.body)));
+      }else if(!x.read&&S.openL!==x.id){
+        out.push(h('div',{class:'lt new'},h('div',{class:'lth'},icon(t),h('div',null,
+          h('div',{class:'ltt'},'Ha arribat una carta de '+nm(x.from_player)),
+          h('div',{class:'tiny'},'Ha viatjat en '+t.n.toLowerCase()+' (' +fmtKm(x.distance_km)+')'))),
+          h('button',{class:'btn sm '+me,type:'button',onclick:function(){
+            S.openL=x.id;renderLetterLists();
+            lAct(function(){return api.readLetter(x.id);});
+          }},'Obrir carta')));
+      }else{
+        out.push(h('div',{class:'lt'},h('div',{class:'lth'},icon(t),h('div',null,
+          h('div',{class:'ltt'},'De '+nm(x.from_player)+' · '+t.n.toLowerCase()),
+          h('div',{class:'tiny'},'Va arribar '+fmtClock(x.arrive)))),
+          h('div',{class:'lbody'},x.body)));
+      }
+    });
+  }
+  if(!ls.length)out.push(h('p',{class:'tiny',style:'margin:14px 0 0'},'Encara no hi ha cap carta. La primera que envieu començarà el seu viatge.'));
+  box.replaceChildren.apply(box,out);
+}
+setInterval(function(){if(S.authed&&ready()&&S.who)renderLetterLists();},30000);
+
 
 /* ---------- notificacions push ---------- */
 function urlB64(b){var p='='.repeat((4-b.length%4)%4),t=(b+p).replace(/-/g,'+').replace(/_/g,'/'),r=atob(t),o=new Uint8Array(r.length);for(var i=0;i<r.length;i++)o[i]=r.charCodeAt(i);return o;}
@@ -582,7 +751,7 @@ function renderAll(){
   $('btn-out').hidden=!S.authed;
   $('btn-colors').hidden=!(S.authed&&ready()&&S.who);
   $('btn-push').hidden=!(S.authed&&ready()&&S.who&&cfg.vapid);
-  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderGames();renderHugs();renderAdd();renderRewards();renderWall();
+  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderGames();renderHugs();renderLetters();renderAdd();renderRewards();renderWall();
 }
 
 /* challenge slot lives above the form */
@@ -607,6 +776,9 @@ var api={
   addMoment:function(m){return sb.from('pp_moments').insert(m).then(chk).then(loadAll);},
   savePref:function(r){return sb.from('pp_prefs').upsert(r).then(chk).then(loadAll);},
   delPref:function(p){return sb.from('pp_prefs').delete().eq('player',p).then(chk).then(loadAll);},
+  savePlace:function(r){return sb.from('pp_places').upsert(r).then(chk).then(loadAll);},
+  sendLetter:function(r){return sb.from('pp_letters').insert(r).then(chk).then(loadAll);},
+  readLetter:function(id){return sb.from('pp_letters').update({read_at:new Date().toISOString()}).eq('id',id).is('read_at',null).then(chk).then(loadAll);},
   giveHug:function(){var n=new Date();return sb.from('pp_hugs').insert({kind:'give',from_player:S.who,status:'done',day:dayKey(n)}).then(chk).then(loadAll);},
   askHug:function(){var n=new Date();return sb.from('pp_hugs').insert({kind:'ask',from_player:S.who,status:'pending',day:dayKey(n)}).then(chk).then(loadAll);},
   returnHug:function(id){var n=new Date();return sb.from('pp_hugs').update({status:'returned',ret_day:dayKey(n),ret_ts:n.toISOString()}).eq('id',id).eq('status','pending').then(chk).then(loadAll);},
@@ -641,7 +813,9 @@ function loadAll(){
     sb.from('pp_rewards').select('*'),
     sb.from('pp_answers').select('*').order('day',{ascending:false}).limit(2000),
     sb.from('pp_prefs').select('*'),
-    sb.from('pp_hugs').select('*').order('ts',{ascending:false}).limit(500)
+    sb.from('pp_hugs').select('*').order('ts',{ascending:false}).limit(500),
+    sb.from('pp_places').select('*'),
+    sb.from('pp_letters').select('*').order('sent_at',{ascending:false}).limit(300)
   ]).then(function(rs){
     var c=rs[0].data;
     var fx=cfg.names;
@@ -653,10 +827,12 @@ function loadAll(){
     S.answers=(rs[3].data||[]).map(function(x){return {day:x.day,game:x.game,slot:x.slot,player:x.player,answer:x.answer,prompt:x.prompt};});
     S.colors={a:null,b:null};(rs[4].data||[]).forEach(function(x){if(x.player==='a'||x.player==='b')S.colors[x.player]=x.color;});applyColors();
     S.hugs=(rs[5].data||[]).map(function(x){return {id:x.id,kind:x.kind,from_player:x.from_player,status:x.status,day:x.day,ret_day:x.ret_day,ts:new Date(x.ts).getTime()};});
+    S.places={a:null,b:null};(rs[6].data||[]).forEach(function(x){if(x.player==='a'||x.player==='b')S.places[x.player]={name:x.name,lat:x.lat,lon:x.lon};});
+    S.letters=(rs[7].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,to_player:x.to_player,transport:x.transport,distance_km:x.distance_km,body:x.body,sent:new Date(x.sent_at).getTime(),arrive:new Date(x.arrive_at).getTime(),read:!!x.read_at};});
     S.ai={};S.answers.forEach(function(a){S.ai[a.day+'|'+a.game+'|'+a.slot+'|'+a.player]=a;});
     if(S.editNames||document.activeElement&&(document.activeElement.id==='phrase'||document.activeElement.id==='qans')){
       renderBoard();renderChallengeCard();renderRewards();renderWall();
-      if(!S.editNames){renderGames();renderHugs();renderAdd();}
+      if(!S.editNames){renderGames();renderHugs();renderLetters();renderAdd();}
     }else renderAll();
   }).catch(function(){toast('No he pogut carregar el marcador.');});
 }
