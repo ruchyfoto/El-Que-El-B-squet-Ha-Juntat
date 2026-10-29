@@ -90,7 +90,7 @@ var T=[
 var QPTS=2,TPTS=1;
 
 
-var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},colors:{a:null,b:null},colorsOpen:false,who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
+var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
 try{S.who=localStorage.getItem('who')||null;}catch(e){}
 
 function h(tag,props){
@@ -230,6 +230,71 @@ function renderGames(){
   z.replaceChildren(h('section',{class:'card'},h('h2',null,'Jocs d\'avui'),
     h('p',{class:'tiny',style:'margin:-4px 0 12px'},'Es reveles quan heu respost tots dos. Màxim '+(QPTS+3*TPTS)+' punts al dia.'),
     qcard,tcard,hist));
+}
+
+/* ---------- notificacions push ---------- */
+function urlB64(b){var p='='.repeat((4-b.length%4)%4),t=(b+p).replace(/-/g,'+').replace(/_/g,'/'),r=atob(t),o=new Uint8Array(r.length);for(var i=0;i<r.length;i++)o[i]=r.charCodeAt(i);return o;}
+function isIOS(){return /iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}
+function isStandalone(){return window.navigator.standalone===true||(window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches);}
+function pushSupported(){return 'serviceWorker' in navigator&&'PushManager' in window&&'Notification' in window;}
+var swReg=null;
+function getReg(){
+  if(swReg)return Promise.resolve(swReg);
+  return navigator.serviceWorker.register('sw.js').then(function(){return navigator.serviceWorker.ready;}).then(function(r){swReg=r;return r;});
+}
+function pushRow(sub){return {endpoint:sub.endpoint,player:S.who,name:nm(S.who),sub:sub.toJSON()};}
+function syncPush(){
+  if(!cfg.vapid||!pushSupported()||!S.authed||!S.who||!ready())return;
+  var key=S.who+'|'+nm(S.who);if(S.pushSynced===key||S.pushBusy)return;S.pushBusy=true;
+  getReg().then(function(r){return r.pushManager.getSubscription();}).then(function(sub){
+    S.pushSub=!!sub;S.pushSynced=key;
+    if(sub)return sb.from('pp_push').upsert(pushRow(sub)).then(chk);
+  }).then(function(){S.pushBusy=false;renderPush();}).catch(function(){S.pushBusy=false;});
+}
+function enablePush(){
+  return Notification.requestPermission().then(function(p){
+    if(p!=='granted')throw new Error('denied');
+    return getReg();
+  }).then(function(r){
+    return r.pushManager.getSubscription().then(function(s){
+      return s||r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64(cfg.vapid)});
+    });
+  }).then(function(sub){
+    return sb.from('pp_push').upsert(pushRow(sub)).then(chk).then(function(){S.pushSub=true;S.pushSynced=S.who+'|'+nm(S.who);});
+  });
+}
+function disablePush(){
+  return getReg().then(function(r){return r.pushManager.getSubscription();}).then(function(sub){
+    if(!sub)return;
+    return sb.from('pp_push').delete().eq('endpoint',sub.endpoint).then(function(){return sub.unsubscribe();});
+  }).then(function(){S.pushSub=false;S.pushSynced='';});
+}
+function renderPush(){
+  var z=$('pushzone');
+  if(!ready()||!S.who||!S.pushOpen||!cfg.vapid){z.replaceChildren();return;}
+  var body;
+  if(!pushSupported()){
+    body=isIOS()&&!isStandalone()
+      ?h('div',null,h('p',{style:'margin:0 0 8px'},'A l\'iPhone les notificacions només funcionen si la web està a la pantalla d\'inici:'),
+          h('ol',{style:'margin:0;padding-left:20px'},h('li',null,'Obre aquesta web a Safari.'),h('li',null,'Toca Compartir i després «Afegeix a la pantalla d\'inici».'),h('li',null,'Obre-la des de la icona nova i torna aquí a activar els avisos.')))
+      :h('p',{style:'margin:0'},'Aquest navegador no admet notificacions.');
+  }else if(typeof Notification!=='undefined'&&Notification.permission==='denied'){
+    body=h('p',{style:'margin:0'},'Has bloquejat les notificacions d\'aquesta web. Activa-les a la configuració del navegador i torna a provar.');
+  }else if(S.pushSub){
+    var off=h('button',{class:'btn sm',type:'button'},'Desactivar en aquest dispositiu');
+    off.addEventListener('click',function(){off.disabled=true;disablePush().then(function(){toast('Avisos desactivats');renderPush();}).catch(function(e){toast(saveErr(e));off.disabled=false;});});
+    body=h('div',null,h('p',{class:'ok',style:'margin:0 0 12px'},'Avisos activats en aquest dispositiu.'),off);
+  }else{
+    var on=h('button',{class:'btn sm',type:'button'},'Activar avisos');
+    on.addEventListener('click',function(){
+      on.disabled=true;
+      enablePush().then(function(){toast('Avisos activats');renderPush();}).catch(function(e){
+        toast(String(e&&e.message)==='denied'?'No has donat permís per als avisos.':saveErr(e));on.disabled=false;
+      });
+    });
+    body=h('div',null,h('p',{style:'margin:0 0 12px'},'T\'avisarem quan et sumin punts, quan l\'altra persona respongui els jocs, quan pugis de nivell o et preparin un premi, i a les 20:00 si tens alguna cosa pendent.'),on);
+  }
+  z.replaceChildren(h('section',{class:'card'},h('h2',null,'Avisos al mòbil'),body));
 }
 
 /* ---------- colors ---------- */
@@ -461,7 +526,8 @@ function renderAll(){
   $('btn-names').hidden=!(S.authed&&S.cfgLoaded&&ready()&&!(cfg.names&&cfg.names[0]&&cfg.names[1]));
   $('btn-out').hidden=!S.authed;
   $('btn-colors').hidden=!(S.authed&&ready()&&S.who);
-  renderTop();renderBoard();renderColors();renderChallengeCard();renderGames();renderAdd();renderRewards();renderWall();
+  $('btn-push').hidden=!(S.authed&&ready()&&S.who&&cfg.vapid);
+  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderGames();renderAdd();renderRewards();renderWall();
 }
 
 /* challenge slot lives above the form */
@@ -542,8 +608,9 @@ function start(){
   loadAll();
 }
 $('btn-colors').addEventListener('click',function(){S.colorsOpen=!S.colorsOpen;renderColors();});
+$('btn-push').addEventListener('click',function(){S.pushOpen=!S.pushOpen;renderPush();});
 $('btn-out').addEventListener('click',function(){
-  sb.auth.signOut().then(function(){S.authed=false;S.colorsOpen=false;S.colors={a:null,b:null};applyColors();S.cfgLoaded=false;S.names=null;S.moments=[];S.rewards={};started=false;renderAll();});
+  sb.auth.signOut().then(function(){S.authed=false;S.colorsOpen=false;S.pushOpen=false;S.colors={a:null,b:null};applyColors();S.cfgLoaded=false;S.names=null;S.moments=[];S.rewards={};started=false;renderAll();});
 });
 if(!window.supabase||!cfg.url||cfg.url.indexOf('http')!==0||!cfg.key||/EL-TEU|LA-TEVA/.test(cfg.url+cfg.key)){S.setup=true;renderAll();}
 else{

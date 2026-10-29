@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ca"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Claus VAPID</title>
+<style>body{font:16px/1.5 system-ui,sans-serif;max-width:640px;margin:32px auto;padding:0 16px;color:#121A2B}
+button{font:inherit;padding:12px 18px;border:0;border-radius:10px;background:#121A2B;color:#fff;cursor:pointer}
+code,textarea{font:13px/1.4 ui-monospace,monospace;width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccd;border-radius:8px;display:block;word-break:break-all}
+label{display:block;margin:16px 0 4px;font-weight:700}.warn{background:#FFF4E5;border-radius:10px;padding:12px 14px}</style></head>
+<body>
+<h1>Claus per a les notificacions</h1>
+<p>Aquesta pàgina genera les dues claus al teu navegador. No s'envia res enlloc. Obre-la des del teu ordinador (doble clic al fitxer), genera les claus i copia-les.</p>
+<button id="go" type="button">Generar claus</button>
+<div id="out" hidden>
+  <label for="pub">Clau pública (va a config.js i als secrets de Supabase com a VAPID_PUBLIC_KEY)</label>
+  <textarea id="pub" rows="2" readonly></textarea>
+  <label for="priv">Clau privada (només als secrets de Supabase com a VAPID_PRIVATE_KEY)</label>
+  <textarea id="priv" rows="2" readonly></textarea>
+  <p class="warn">La clau privada no s'ha de pujar mai a GitHub, ni posar a config.js, ni compartir.</p>
+</div>
+<script>
+function b64u(buf){var s='',b=new Uint8Array(buf);for(var i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+document.getElementById('go').addEventListener('click',async function(){
+  var k=await crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign','verify']);
+  var pub=await crypto.subtle.exportKey('raw',k.publicKey);
+  var jwk=await crypto.subtle.exportKey('jwk',k.privateKey);
+  document.getElementById('pub').value=b64u(pub);
+  document.getElementById('priv').value=jwk.d;
+  document.getElementById('out').hidden=false;
+});
+</script></body></html>
