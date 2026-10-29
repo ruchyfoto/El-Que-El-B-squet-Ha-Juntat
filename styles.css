@@ -139,3 +139,12 @@ body{margin:0}
 .swc input{width:40px;height:40px;padding:0;border:0;background:none;border-radius:50%;cursor:pointer}
 
 .logo{flex:none;width:44px;height:44px;border-radius:50%;object-fit:cover;border:2px solid var(--a);display:block}
+
+/* abraçades */
+.hugbtns{display:flex;gap:10px;flex-wrap:wrap}
+.btn.ghost{background:transparent;color:var(--fg);border:1.5px solid var(--fg)}
+.hugreq{margin-top:12px;padding:12px;border-radius:12px;background:var(--soft);border:1.5px dashed var(--muted);display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.hugs{margin-top:14px;border-top:1px solid var(--line)}
+.hugrow{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.hugrow span:first-child{min-width:0;overflow-wrap:anywhere}
+.hugrow .tiny{white-space:nowrap}

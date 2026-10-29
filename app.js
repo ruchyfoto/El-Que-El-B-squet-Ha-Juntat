@@ -90,7 +90,7 @@ var T=[
 var QPTS=2,TPTS=1;
 
 
-var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
+var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},hugs:[],colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
 try{S.who=localStorage.getItem('who')||null;}catch(e){}
 
 function h(tag,props){
@@ -128,10 +128,10 @@ function toast(msg){
 function nm(p){return (S.names&&S.names[p])||(p==='a'?'Jugador 1':'Jugador 2');}
 function other(p){return p==='a'?'b':'a';}
 function catOf(k){return k==='repte'?REPTE:(CATS.filter(function(c){return c.k===k;})[0]||CATS[0]);}
-function score(p){return S.moments.reduce(function(s,m){return m.speaker===p?s+(+m.pts||0):s;},0)+gamePts(p);}
+function score(p){return S.moments.reduce(function(s,m){return m.speaker===p?s+(+m.pts||0):s;},0)+gamePts(p)+hugPts(p);}
 function level(p){return Math.floor(score(p)/STEP);}
 function streak(p){
-  var days={};S.moments.forEach(function(m){if(m.speaker===p)days[m.day]=1;});S.answers.forEach(function(a){if(a.player===p)days[a.day]=1;});
+  var days={};S.moments.forEach(function(m){if(m.speaker===p)days[m.day]=1;});S.answers.forEach(function(a){if(a.player===p)days[a.day]=1;});S.hugs.forEach(function(x){if(x.from_player===p)days[x.day]=1;if(x.status==='returned'&&x.from_player!==p&&x.ret_day)days[x.ret_day]=1;});
   var d=new Date();d.setHours(12,0,0,0);
   if(!days[dayKey(d)])d.setDate(d.getDate()-1);
   var n=0;while(days[dayKey(d)]){n++;d.setDate(d.getDate()-1);}
@@ -230,6 +230,47 @@ function renderGames(){
   z.replaceChildren(h('section',{class:'card'},h('h2',null,'Jocs d\'avui'),
     h('p',{class:'tiny',style:'margin:-4px 0 12px'},'Es reveles quan heu respost tots dos. Màxim '+(QPTS+3*TPTS)+' punts al dia.'),
     qcard,tcard,hist));
+}
+
+/* ---------- abraçades ---------- */
+var HUGPTS=1;
+function hugPts(p){
+  var n=0;
+  S.hugs.forEach(function(x){
+    if(x.kind==='give'){if(x.from_player===p)n+=HUGPTS;}
+    else if(x.status==='returned')n+=HUGPTS;
+  });
+  return n;
+}
+var hSaving=false;
+function hugAct(fn,msg){
+  if(hSaving)return;hSaving=true;
+  fn().then(function(){toast(msg);}).catch(function(e){toast(saveErr(e));}).then(function(){hSaving=false;renderHugs();});
+}
+function fmtWhen(ts){var d=new Date(ts);return d.toLocaleDateString('ca',{day:'numeric',month:'short'})+', '+pad(d.getHours())+':'+pad(d.getMinutes());}
+function renderHugs(){
+  var z=$('hugs');
+  if(!ready()||!S.who){z.replaceChildren();return;}
+  var me=S.who,ot=other(me);
+  var inc=S.hugs.filter(function(x){return x.kind==='ask'&&x.status==='pending'&&x.from_player===ot;});
+  var out=S.hugs.filter(function(x){return x.kind==='ask'&&x.status==='pending'&&x.from_player===me;});
+  var give=h('button',{class:'btn sm '+me,type:'button',onclick:function(){hugAct(function(){return api.giveHug();},'Abraçada donada: +'+HUGPTS);}},'Donar abraçada · +'+HUGPTS);
+  var ask=h('button',{class:'btn sm ghost',type:'button',disabled:out.length>0,onclick:function(){hugAct(function(){return api.askHug();},'Abraçada demanada');}},out.length?'Ja n\'has demanat una':'Demanar abraçada');
+  var parts=[h('div',{class:'hugbtns'},give,ask)];
+  inc.forEach(function(x){
+    parts.push(h('div',{class:'hugreq'},h('div',null,h('b',null,nm(ot)),' et demana una abraçada.'),
+      h('button',{class:'btn sm '+me,type:'button',onclick:function(){hugAct(function(){return api.returnHug(x.id);},'Abraçada tornada: +'+HUGPTS+' per als dos');}},'Tornar l\'abraçada · +'+HUGPTS+' per als dos')));
+  });
+  if(out.length)parts.push(h('p',{class:'tiny',style:'margin:10px 0 0'},'Esperant que '+nm(ot)+' et torni l\'abraçada. Si la torna, sumeu '+HUGPTS+' punt cadascú.'));
+  var rows=S.hugs.slice().sort(function(x,y){return y.ts-x.ts;}).slice(0,6).map(function(x){
+    var txt;
+    if(x.kind==='give')txt=nm(x.from_player)+' ha donat una abraçada · +'+HUGPTS;
+    else if(x.status==='returned')txt=nm(other(x.from_player))+' ha tornat l\'abraçada a '+nm(x.from_player)+' · +'+HUGPTS+' cadascú';
+    else txt=nm(x.from_player)+' ha demanat una abraçada · pendent';
+    return h('div',{class:'hugrow'},h('span',null,txt),h('span',{class:'tiny'},fmtWhen(x.ts)));
+  });
+  if(rows.length)parts.push(h('div',{class:'hugs'},rows));
+  z.replaceChildren(h('section',{class:'card'},h('h2',null,'Abraçades'),parts));
 }
 
 /* ---------- notificacions push ---------- */
@@ -527,7 +568,7 @@ function renderAll(){
   $('btn-out').hidden=!S.authed;
   $('btn-colors').hidden=!(S.authed&&ready()&&S.who);
   $('btn-push').hidden=!(S.authed&&ready()&&S.who&&cfg.vapid);
-  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderGames();renderAdd();renderRewards();renderWall();
+  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderGames();renderHugs();renderAdd();renderRewards();renderWall();
 }
 
 /* challenge slot lives above the form */
@@ -552,6 +593,9 @@ var api={
   addMoment:function(m){return sb.from('pp_moments').insert(m).then(chk).then(loadAll);},
   savePref:function(r){return sb.from('pp_prefs').upsert(r).then(chk).then(loadAll);},
   delPref:function(p){return sb.from('pp_prefs').delete().eq('player',p).then(chk).then(loadAll);},
+  giveHug:function(){var n=new Date();return sb.from('pp_hugs').insert({kind:'give',from_player:S.who,status:'done',day:dayKey(n)}).then(chk).then(loadAll);},
+  askHug:function(){var n=new Date();return sb.from('pp_hugs').insert({kind:'ask',from_player:S.who,status:'pending',day:dayKey(n)}).then(chk).then(loadAll);},
+  returnHug:function(id){var n=new Date();return sb.from('pp_hugs').update({status:'returned',ret_day:dayKey(n),ret_ts:n.toISOString()}).eq('id',id).eq('status','pending').then(chk).then(loadAll);},
   saveAnswer:function(r){return sb.from('pp_answers').insert(r).then(chk).then(loadAll);},
   saveReward:function(r){return sb.from('pp_rewards').upsert(r).then(chk).then(loadAll);},
   deleteMoment:function(id){return sb.from('pp_moments').delete().eq('id',id).then(chk).then(loadAll);}
@@ -582,7 +626,8 @@ function loadAll(){
     sb.from('pp_moments').select('*').order('ts',{ascending:false}).limit(1000),
     sb.from('pp_rewards').select('*'),
     sb.from('pp_answers').select('*').order('day',{ascending:false}).limit(2000),
-    sb.from('pp_prefs').select('*')
+    sb.from('pp_prefs').select('*'),
+    sb.from('pp_hugs').select('*').order('ts',{ascending:false}).limit(500)
   ]).then(function(rs){
     var c=rs[0].data;
     var fx=cfg.names;
@@ -593,10 +638,11 @@ function loadAll(){
     S.rewards=r;
     S.answers=(rs[3].data||[]).map(function(x){return {day:x.day,game:x.game,slot:x.slot,player:x.player,answer:x.answer,prompt:x.prompt};});
     S.colors={a:null,b:null};(rs[4].data||[]).forEach(function(x){if(x.player==='a'||x.player==='b')S.colors[x.player]=x.color;});applyColors();
+    S.hugs=(rs[5].data||[]).map(function(x){return {id:x.id,kind:x.kind,from_player:x.from_player,status:x.status,day:x.day,ret_day:x.ret_day,ts:new Date(x.ts).getTime()};});
     S.ai={};S.answers.forEach(function(a){S.ai[a.day+'|'+a.game+'|'+a.slot+'|'+a.player]=a;});
     if(S.editNames||document.activeElement&&(document.activeElement.id==='phrase'||document.activeElement.id==='qans')){
       renderBoard();renderChallengeCard();renderRewards();renderWall();
-      if(!S.editNames){renderGames();renderAdd();}
+      if(!S.editNames){renderGames();renderHugs();renderAdd();}
     }else renderAll();
   }).catch(function(){toast('No he pogut carregar el marcador.');});
 }
