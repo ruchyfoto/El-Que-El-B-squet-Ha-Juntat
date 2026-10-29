@@ -283,13 +283,24 @@ function getReg(){
   if(swReg)return Promise.resolve(swReg);
   return navigator.serviceWorker.register('sw.js').then(function(){return navigator.serviceWorker.ready;}).then(function(r){swReg=r;return r;});
 }
+function keyMatches(sub){
+  try{
+    var k=sub&&sub.options&&sub.options.applicationServerKey;
+    if(!k)return true;
+    var a=new Uint8Array(k),b=urlB64(cfg.vapid);
+    if(a.length!==b.length)return false;
+    for(var i=0;i<a.length;i++){if(a[i]!==b[i])return false;}
+    return true;
+  }catch(e){return true;}
+}
 function pushRow(sub){return {endpoint:sub.endpoint,player:S.who,name:nm(S.who),sub:sub.toJSON()};}
 function syncPush(){
   if(!cfg.vapid||!pushSupported()||!S.authed||!S.who||!ready())return;
   var key=S.who+'|'+nm(S.who);if(S.pushSynced===key||S.pushBusy)return;S.pushBusy=true;
   getReg().then(function(r){return r.pushManager.getSubscription();}).then(function(sub){
-    S.pushSub=!!sub;S.pushSynced=key;
-    if(sub)return sb.from('pp_push').upsert(pushRow(sub)).then(chk);
+    var ok=!!sub&&keyMatches(sub);
+    S.pushSub=ok;S.pushSynced=key;
+    if(ok)return sb.from('pp_push').upsert(pushRow(sub)).then(chk);
   }).then(function(){S.pushBusy=false;renderPush();}).catch(function(){S.pushBusy=false;});
 }
 function enablePush(){
@@ -298,7 +309,10 @@ function enablePush(){
     return getReg();
   }).then(function(r){
     return r.pushManager.getSubscription().then(function(s){
-      return s||r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64(cfg.vapid)});
+      var fresh=function(){return r.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64(cfg.vapid)});};
+      if(!s)return fresh();
+      if(keyMatches(s))return s;
+      return s.unsubscribe().then(fresh);
     });
   }).then(function(sub){
     return sb.from('pp_push').upsert(pushRow(sub)).then(chk).then(function(){S.pushSub=true;S.pushSynced=S.who+'|'+nm(S.who);});
