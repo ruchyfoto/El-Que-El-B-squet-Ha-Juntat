@@ -313,6 +313,80 @@ function searchCity(q){
     .then(function(r){if(!r.ok)throw new Error('geo');return r.json();})
     .then(function(j){return (j.results||[]).map(function(x){return {name:[x.name,x.admin1,x.country].filter(Boolean).join(', '),lat:x.latitude,lon:x.longitude};});});
 }
+
+/* ---------- mapa de la carta ---------- */
+var LAND={d:null,state:0}; /* state: 0 pendent, 1 carregant, 2 llest, 3 error */
+var LAND_URL='https://cdn.jsdelivr.net/npm/world-atlas@2.0.2/land-110m.json';
+function topoToPath(t){
+  var sc=t.transform?t.transform.scale:[1,1],tr=t.transform?t.transform.translate:[0,0],arcs=[];
+  t.arcs.forEach(function(a){var x=0,y=0,pts=[];a.forEach(function(p){if(t.transform){x+=p[0];y+=p[1];pts.push([x*sc[0]+tr[0],y*sc[1]+tr[1]]);}else pts.push([p[0],p[1]]);});arcs.push(pts);});
+  function arc(i){return i<0?arcs[~i].slice().reverse():arcs[i];}
+  function ring(idx){var out=[];idx.forEach(function(i,k){var a=arc(i);out=out.concat(k?a.slice(1):a);});return out;}
+  var d='';
+  function poly(rings){rings.forEach(function(r){var pts=ring(r);pts.forEach(function(p,i){d+=(i?'L':'M')+(p[0]+180).toFixed(1)+' '+(90-p[1]).toFixed(1);});d+='Z';});}
+  function geom(g){
+    if(g.type==='GeometryCollection')g.geometries.forEach(geom);
+    else if(g.type==='Polygon')poly(g.arcs);
+    else if(g.type==='MultiPolygon')g.arcs.forEach(poly);
+  }
+  Object.keys(t.objects).forEach(function(k){geom(t.objects[k]);});
+  return d;
+}
+function loadLand(){
+  if(LAND.state!==0)return;LAND.state=1;
+  fetch(LAND_URL).then(function(r){if(!r.ok)throw new Error('land');return r.json();})
+    .then(function(j){LAND.d=topoToPath(j);LAND.state=2;if(S.authed&&ready()&&S.who)renderLetterLists();})
+    .catch(function(){LAND.state=3;});
+}
+var SVGNS='http://www.w3.org/2000/svg';
+function sv(tag,attrs,kids){
+  var e=document.createElementNS(SVGNS,tag),k;
+  for(k in (attrs||{}))e.setAttribute(k,attrs[k]);
+  (kids||[]).forEach(function(c){e.append(c);});
+  return e;
+}
+function shortPlace(n){return String(n||'').split(',')[0];}
+/* progrés 0..1 de la carta; p1 = remitent, p2 = destinatari */
+function letterMap(p1,p2,frac,from,t){
+  var x1=+p1.lon+180,y1=90-p1.lat,x2=+p2.lon+180,y2=90-p2.lat;
+  var cx=(x1+x2)/2,cy=(y1+y2)/2,w=Math.max(Math.abs(x2-x1)*1.7,70),h;
+  w=Math.min(w,360);h=Math.min(w*0.62,180);if(h<Math.abs(y2-y1)*1.9){h=Math.min(Math.abs(y2-y1)*1.9,180);w=Math.min(h/0.62,360);}
+  var vx=Math.max(0,Math.min(360-w,cx-w/2)),vy=Math.max(0,Math.min(180-h,cy-h/2));
+  var k=w/380;
+  var dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy)||1,bend=len*0.22;
+  var qx=cx,qy=cy-Math.max(bend,4);
+  var path='M'+x1+' '+y1+' Q'+qx+' '+qy+' '+x2+' '+y2;
+  var tt=Math.max(0,Math.min(1,frac)),u=1-tt;
+  var mx=u*u*x1+2*u*tt*qx+tt*tt*x2,my=u*u*y1+2*u*tt*qy+tt*tt*y2;
+  var svg=sv('svg',{viewBox:vx+' '+vy+' '+w+' '+h,class:'lmap',role:'img','aria-label':'Mapa del viatge de la carta de '+shortPlace(p1.name)+' a '+shortPlace(p2.name),preserveAspectRatio:'xMidYMid meet',style:'aspect-ratio:'+w.toFixed(1)+'/'+h.toFixed(1)});
+  var defs=sv('defs',null,[]);
+  var g=sv('linearGradient',{id:'ocean',x1:'0',y1:'0',x2:'0',y2:'1'});
+  g.append(sv('stop',{offset:'0','stop-color':'var(--ocean1)'}),sv('stop',{offset:'1','stop-color':'var(--ocean2)'}));
+  defs.append(g);svg.append(defs);
+  svg.append(sv('rect',{x:vx,y:vy,width:w,height:h,fill:'url(#ocean)'}));
+  var grat='';
+  for(var lo=0;lo<=360;lo+=30)grat+='M'+lo+' 0V180';
+  for(var la=0;la<=180;la+=30)grat+='M0 '+la+'H360';
+  svg.append(sv('path',{d:grat,class:'grat','vector-effect':'non-scaling-stroke'}));
+  if(LAND.d)svg.append(sv('path',{d:LAND.d,class:'land'}));
+  svg.append(sv('path',{d:path,class:'route','vector-effect':'non-scaling-stroke'}));
+  svg.append(sv('path',{d:path,class:'done','vector-effect':'non-scaling-stroke',pathLength:'1','stroke-dasharray':tt+' 1',style:'stroke:var(--'+from+')'}));
+  function pin(x,y,pl,place,anchor){
+    var r=3.2*k*2.9;
+    var gp=sv('g',null,[sv('circle',{cx:x,cy:y,r:r*1.9,class:'halo',style:'fill:var(--'+pl+')'}),sv('circle',{cx:x,cy:y,r:r,class:'pin',style:'fill:var(--'+pl+')'})]);
+    var tx=sv('text',{x:x,y:y-r*2.4,'text-anchor':anchor,class:'plc','font-size':(15*k).toFixed(2)});tx.textContent=shortPlace(place.name);
+    gp.append(tx);return gp;
+  }
+  svg.append(pin(x1,y1,from,p1,'middle'),pin(x2,y2,from==='a'?'b':'a',p2,'middle'));
+  if(tt>0&&tt<1){
+    var r=6*k;
+    var env=sv('g',{transform:'translate('+mx+' '+my+') scale('+(k*1.5).toFixed(3)+')'});
+    env.append(sv('circle',{r:'6.5',class:'mk',style:'fill:var(--'+from+')'}),
+      sv('path',{d:'M-3.6 -2.2h7.2v4.4h-7.2z M-3.6 -2.2L0 0.6L3.6 -2.2',fill:'none',stroke:'#fff','stroke-width':'1.1','stroke-linejoin':'round'}));
+    svg.append(env);
+  }
+  return svg;
+}
 var lSaving=false;
 function lAct(fn,msg){
   if(lSaving)return Promise.resolve();lSaving=true;
@@ -349,8 +423,16 @@ function placePicker(){
 function savePlace(name,lat,lon){
   lAct(function(){return api.savePlace({player:S.who,name:name,lat:lat,lon:lon});},'Ubicació guardada').then(function(){S.editPlace=false;S.lsig='';renderLetters();});
 }
+function updateCta(){
+  var b=$('btn-letter');if(!b)return;
+  if(!S.authed||!ready()||!S.who){b.hidden=true;return;}
+  var now=Date.now(),me=S.who,n=S.letters.filter(function(x){return x.to_player===me&&x.arrive<=now&&!x.read;}).length;
+  b.hidden=false;b.classList.toggle('has',n>0);
+  b.textContent=n>0?'\u2709 Tens '+n+(n===1?' carta per obrir':' cartes per obrir'):'\u2709 Escriure una carta';
+}
 function renderLetters(){
   var z=$('letters');
+  updateCta();
   if(!ready()||!S.who){z.replaceChildren();return;}
   var me=S.who,ot=other(me);
   var sig=JSON.stringify([me,S.names,S.places,S.editPlace]);
@@ -395,6 +477,7 @@ function renderLetters(){
 }
 function renderLetterLists(){
   var box=document.getElementById('llists');if(!box)return;
+  loadLand();
   var me=S.who,ot=other(me),now=Date.now(),out=[];
   var ls=S.letters.slice().sort(function(a,b){return b.sent-a.sent;});
   var transit=ls.filter(function(x){return x.arrive>now;}),arrived=ls.filter(function(x){return x.arrive<=now;});
@@ -407,7 +490,7 @@ function renderLetterLists(){
         h('div',{class:'lth'},icon(t),h('div',null,
           h('div',{class:'ltt'},mineL?'Per a '+nm(x.to_player)+' · '+t.n.toLowerCase():'De '+nm(x.from_player)+' · '+t.n.toLowerCase()),
           h('div',{class:'tiny'},'Arriba d\'aquí '+fmtDur((x.arrive-now)/60000)+' ('+fmtClock(x.arrive)+') · '+fmtKm(x.distance_km)))),
-        h('div',{class:'prog'},h('i',{style:'width:'+pct+'%'})),
+        (S.places[x.from_player]&&S.places[x.to_player])?letterMap(S.places[x.from_player],S.places[x.to_player],(now-x.sent)/tot,x.from_player,t):h('div',{class:'prog'},h('i',{style:'width:'+pct+'%'})),
         mineL?h('div',{class:'lbody'},x.body):null));
     });
   }
@@ -439,7 +522,7 @@ function renderLetterLists(){
   if(!ls.length)out.push(h('p',{class:'tiny',style:'margin:14px 0 0'},'Encara no hi ha cap carta. La primera que envieu començarà el seu viatge.'));
   box.replaceChildren.apply(box,out);
 }
-setInterval(function(){if(S.authed&&ready()&&S.who)renderLetterLists();},30000);
+setInterval(function(){if(S.authed&&ready()&&S.who)renderLetterLists();updateCta();},30000);
 
 
 /* ---------- notificacions push ---------- */
@@ -757,6 +840,7 @@ function renderAll(){
 /* challenge slot lives above the form */
 (function(){var z=document.createElement('div');z.id='challenge';$('board').after(z);})();
 
+$('btn-letter').addEventListener('click',function(){var z=$('letters');z.scrollIntoView({behavior:'smooth',block:'start'});var t=document.getElementById('ltext')||document.getElementById('cityq');if(t)setTimeout(function(){try{t.focus({preventScroll:true});}catch(e){}},400);});
 $('btn-names').addEventListener('click',function(){S.editNames=!S.editNames;renderTop();});
 
 /* ---------- Supabase ---------- */

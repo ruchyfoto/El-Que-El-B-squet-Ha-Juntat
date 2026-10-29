@@ -4,7 +4,7 @@
   --bg:#FBF3F1; --surface:#FFFDFC; --fg:#3A1F2B; --muted:#7D6670; --line:#EBD5D5; --soft:#FAEDEA;
   --a:#C2415D; --on-a:#FFFFFF; --b:#7A5AA6; --on-b:#FFFFFF;
   --board:#4A1630; --board-fg:#FFF4F1; --board-mute:#D9AFBD; --led:#F4C98B;
-  --ok:#3E8E62; --warn:#B5650A;
+  --ok:#3E8E62; --warn:#B5650A; --ocean1:#F7DDE0; --ocean2:#EFC9D1; --land:#FFF8F4; --landline:#D9AEB9;
   color-scheme:light;
   --display:"Cormorant Garamond","Playfair Display",Georgia,serif;
   --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -13,12 +13,12 @@
   --bg:#1D0F18; --surface:#2A1521; --fg:#FBE9E6; --muted:#C2A0AC; --line:#4A2A3A; --soft:#231220;
   --a:#F0708A; --on-a:#2A0E19; --b:#B79AE0; --on-b:#1E1230;
   --board:#38101F; --board-fg:#FFF4F1; --board-mute:#D9AFBD; --led:#F4C98B;
-  --ok:#6FCB9B; --warn:#F0A04B; color-scheme:dark;}}
+  --ok:#6FCB9B; --warn:#F0A04B; --ocean1:#341827; --ocean2:#2A1220; --land:#4F2B3F; --landline:#6E4259; color-scheme:dark;}}
 :root[data-theme="dark"]{
   --bg:#1D0F18; --surface:#2A1521; --fg:#FBE9E6; --muted:#C2A0AC; --line:#4A2A3A; --soft:#231220;
   --a:#F0708A; --on-a:#2A0E19; --b:#B79AE0; --on-b:#1E1230;
   --board:#38101F; --board-fg:#FFF4F1; --board-mute:#D9AFBD; --led:#F4C98B;
-  --ok:#6FCB9B; --warn:#F0A04B; color-scheme:dark;}
+  --ok:#6FCB9B; --warn:#F0A04B; --ocean1:#341827; --ocean2:#2A1220; --land:#4F2B3F; --landline:#6E4259; color-scheme:dark;}
 
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font:16px/1.5 var(--body);
@@ -178,3 +178,19 @@ body{background:radial-gradient(900px 420px at 50% -120px,rgba(240,112,138,.18),
 .cat .p{font-weight:700}
 .btn{box-shadow:0 8px 18px -10px rgba(122,40,70,.6)}
 .lab{letter-spacing:.08em}
+
+/* mapa de la carta */
+.lmap{width:100%;height:auto;aspect-ratio:380/236;border-radius:14px;display:block;background:var(--ocean1)}
+.lmap .grat{fill:none;stroke:var(--landline);stroke-width:.5;opacity:.35}
+.lmap .land{fill:var(--land);stroke:var(--landline);stroke-width:.4;stroke-linejoin:round}
+.lmap .route{fill:none;stroke:var(--muted);stroke-width:1.6;stroke-dasharray:2 5;stroke-linecap:round;opacity:.7}
+.lmap .done{fill:none;stroke-width:3;stroke-linecap:round}
+.lmap .pin{stroke:#fff;stroke-width:.8}
+.lmap .halo{opacity:.22}
+.lmap .plc{fill:var(--fg);font-family:var(--body);font-weight:700;paint-order:stroke;stroke:var(--land);stroke-width:2.2px;stroke-linejoin:round}
+.lmap .mk{stroke:#fff;stroke-width:1}
+
+.btn.cta{margin:0;padding:15px 18px;font-size:17px;background:linear-gradient(135deg,var(--a),var(--b));color:#fff;letter-spacing:.01em}
+.btn.cta.has{animation:pulse 2.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 8px 18px -10px rgba(122,40,70,.6)}50%{box-shadow:0 0 0 6px rgba(240,112,138,.28)}}
+@media (prefers-reduced-motion:reduce){.btn.cta.has{animation:none}}
