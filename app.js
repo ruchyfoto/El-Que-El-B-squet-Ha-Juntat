@@ -90,7 +90,7 @@ var T=[
 var QPTS=2,TPTS=1;
 
 
-var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},hugs:[],places:{a:null,b:null},letters:[],offers:[],redeems:[],c4:[],chat:[],chatOpen:false,ltr:null,openL:null,editPlace:false,lsig:'',colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
+var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},hugs:[],places:{a:null,b:null},letters:[],offers:[],redeems:[],c4:[],chat:[],chatOpen:false,dates:[],calSel:null,calMonth:null,dateForm:null,ltr:null,openL:null,editPlace:false,lsig:'',colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
 try{S.who=localStorage.getItem('who')||null;}catch(e){}
 
 function h(tag,props){
@@ -608,6 +608,129 @@ function renderLetterLists(){
 }
 setInterval(function(){if(S.authed&&ready()&&S.who)renderLetterLists();updateCta();},30000);
 
+
+/* ---------- calendari de dates assenyalades ---------- */
+function dimL(y,m){return new Date(y,m,0).getDate();}
+function occursOn(ev,y,m,d){
+  if(d!==Math.min(ev.day,dimL(y,m)))return false;
+  var s=ev.since;
+  if(ev.repeat==='monthly')return !(s&&y*12+m<s.y*12+s.m);
+  if(ev.repeat==='yearly')return ev.month===m&&!(s&&y<s.y);
+  return !!s&&s.y===y&&s.m===m&&s.d===d;
+}
+function countTxt(ev,y,m){
+  if(!ev.since||ev.repeat==='once')return '';
+  var s=ev.since,n=ev.repeat==='monthly'?y*12+m-(s.y*12+s.m):(y-s.y)*12;
+  if(n<=0)return '';
+  var yy=Math.floor(n/12),mm=n%12,p=[];
+  if(yy)p.push(yy+(yy===1?' any':' anys'));
+  if(mm)p.push(mm+(mm===1?' mes':' mesos'));
+  return p.join(' i ');
+}
+/* dates especials d'avui en endavant: [{ev,date,days,label}] */
+function calEvents(){
+  var list=S.dates.map(function(e){return {ev:e,title:e.title};});
+  if(S.meet){var md=parseDay(S.meet);if(md)list.push({ev:{id:'meet',title:'Retrobada',repeat:'once',day:md.getDate(),month:md.getMonth()+1,since:{y:md.getFullYear(),m:md.getMonth()+1,d:md.getDate()},fixed:true},title:'Retrobada'});}
+  return list;
+}
+function eventsOn(y,m,d){return calEvents().filter(function(x){return occursOn(x.ev,y,m,d);});}
+function upcoming(limit){
+  var out=[],n=new Date(),base=new Date(n.getFullYear(),n.getMonth(),n.getDate()),all=calEvents();
+  all.forEach(function(x){
+    for(var i=0;i<800;i++){
+      var d=new Date(base.getFullYear(),base.getMonth(),base.getDate()+i);
+      if(occursOn(x.ev,d.getFullYear(),d.getMonth()+1,d.getDate())){out.push({x:x,date:d,days:i});break;}
+    }
+  });
+  out.sort(function(a,b){return a.days-b.days;});
+  return out.slice(0,limit);
+}
+var WD=['Dl','Dt','Dc','Dj','Dv','Ds','Dg'];
+function dateFormOpen(ev){
+  var n=new Date(),def=ymd(n);
+  if(ev){
+    var base=ev.since?ymd(new Date(ev.since.y,ev.since.m-1,ev.since.d)):ymd(new Date(n.getFullYear(),(ev.month||n.getMonth()+1)-1,Math.min(ev.day,dimL(n.getFullYear(),ev.month||n.getMonth()+1))));
+    S.dateForm={id:ev.id,title:ev.title,repeat:ev.repeat,date:base,count:!!ev.since};
+  }else S.dateForm={id:null,title:'',repeat:'yearly',date:def,count:true};
+  renderCal(true);
+}
+function renderCal(force){
+  var z=$('cal');
+  if(!ready()||!S.who){z.replaceChildren();return;}
+  var ae=document.activeElement;
+  if(!force&&z.firstChild&&S.dateForm&&ae&&(ae.id==='dtt'||ae.id==='dtd'))return;
+  var me=S.who,now=new Date(),cm=S.calMonth||{y:now.getFullYear(),m:now.getMonth()+1};
+  var sel=S.calSel||{y:now.getFullYear(),m:now.getMonth()+1,d:now.getDate()};
+  var parts=[];
+  // capçalera de mes
+  function go(dm){var m=cm.m+dm,y=cm.y;if(m<1){m=12;y--;}if(m>12){m=1;y++;}S.calMonth={y:y,m:m};renderCal(true);}
+  parts.push(h('div',{class:'calh'},
+    h('button',{class:'link calnav',type:'button','aria-label':'Mes anterior',onclick:function(){go(-1);}},'‹'),
+    h('div',{class:'calt'},new Date(cm.y,cm.m-1,1).toLocaleDateString('ca',{month:'long',year:'numeric'}).replace(' del ',' ')),
+    h('button',{class:'link calnav',type:'button','aria-label':'Mes següent',onclick:function(){go(1);}},'›')));
+  var grid=[];
+  WD.forEach(function(w){grid.push(h('div',{class:'calw'},w));});
+  var first=(new Date(cm.y,cm.m-1,1).getDay()+6)%7,dim=dimL(cm.y,cm.m),i,d;
+  for(i=0;i<first;i++)grid.push(h('div'));
+  for(d=1;d<=dim;d++){
+    (function(d){
+      var evs=eventsOn(cm.y,cm.m,d),isT=cm.y===now.getFullYear()&&cm.m===now.getMonth()+1&&d===now.getDate();
+      var isS=sel.y===cm.y&&sel.m===cm.m&&sel.d===d;
+      grid.push(h('button',{class:'cald'+(evs.length?' has':'')+(isT?' today':'')+(isS?' sel':''),type:'button',
+        'aria-label':d+' de '+new Date(cm.y,cm.m-1,1).toLocaleDateString('ca',{month:'long'})+(evs.length?': '+evs.map(function(e){return e.title;}).join(', '):''),
+        onclick:function(){S.calSel={y:cm.y,m:cm.m,d:d};renderCal(true);}},String(d),evs.length?h('span',{class:'cdot'},'♥'):null));
+    })(d);
+  }
+  parts.push(h('div',{class:'calg'},grid));
+  // dia seleccionat
+  var se=eventsOn(sel.y,sel.m,sel.d);
+  parts.push(h('div',{class:'calsel'},
+    h('div',{class:'tiny'},new Date(sel.y,sel.m-1,sel.d).toLocaleDateString('ca',{weekday:'long',day:'numeric',month:'long',year:'numeric'})),
+    se.length?se.map(function(e){var c=countTxt(e.ev,sel.y,sel.m);return h('div',{class:'ltt'},'♥ '+e.title+(c?' · '+c:''));}):h('div',{class:'tiny'},'Cap data assenyalada.')));
+  // properes
+  var up=upcoming(6);
+  parts.push(h('span',{class:'lab'},'Properes dates'));
+  up.forEach(function(u){
+    var c=countTxt(u.x.ev,u.date.getFullYear(),u.date.getMonth()+1);
+    var when=u.days===0?'Avui!':(u.days===1?'Demà':'D’aquí '+u.days+' dies');
+    parts.push(h('div',{class:'shr'},h('div',{class:'shl'},h('div',{class:'ltt'},u.x.title+(c?' · '+c:'')),
+      h('div',{class:'tiny'},when+' · '+u.date.toLocaleDateString('ca',{weekday:'long',day:'numeric',month:'long'}))),
+      u.x.ev.fixed?null:h('button',{class:'link',type:'button',onclick:function(){dateFormOpen(u.x.ev);}},'Editar')));
+  });
+  if(!up.length)parts.push(h('p',{class:'tiny',style:'margin:0'},'Encara no hi ha dates. Afegeix-ne alguna!'));
+  parts.push(h('p',{class:'tiny',style:'margin:10px 0 0'},'Rebreu un avís el mateix dia a les 9:00. La retrobada surt automàticament del compte enrere.'));
+  // formulari
+  var f=S.dateForm;
+  if(!f){
+    parts.push(h('button',{class:'btn '+me,type:'button',onclick:function(){dateFormOpen(null);}},'Afegir una data'));
+  }else{
+    var ti=h('input',{type:'text',id:'dtt',maxlength:'60',placeholder:'Ex.: Aniversari, el dia que ens vam conèixer…',value:f.title,oninput:function(e){f.title=e.target.value;}});
+    var di=h('input',{type:'date',id:'dtd',value:f.date,oninput:function(e){f.date=e.target.value;}});
+    var rp=h('select',{id:'dtr',onchange:function(e){f.repeat=e.target.value;renderCal(true);}},
+      [['yearly','Cada any'],['monthly','Cada mes'],['once','Només una vegada']].map(function(o){var op=h('option',{value:o[0]},o[1]);if(f.repeat===o[0])op.selected=true;return op;}));
+    var ck=h('input',{type:'checkbox',id:'dtc',onchange:function(e){f.count=e.target.checked;}});ck.checked=!!f.count;
+    parts.push(h('div',{class:'dtform'},
+      h('span',{class:'lab'},f.id?'Editar la data':'Nova data'),
+      ti,h('label',{class:'lab',for:'dtd'},'Dia'),di,h('label',{class:'lab',for:'dtr'},'Es repeteix'),rp,
+      f.repeat!=='once'?h('label',{class:'chk'},ck,h('span',null,'Compta el temps des d’aquest dia (mesos o anys junts)')):null,
+      h('div',{class:'row',style:'margin-top:12px'},
+        h('button',{class:'btn sm '+me,type:'button',style:'flex:1',onclick:function(){saveDateForm();}},'Guardar'),
+        h('button',{class:'btn sm',type:'button',style:'flex:none;background:var(--soft);color:var(--fg)',onclick:function(){S.dateForm=null;renderCal(true);}},'Cancel·lar')),
+      f.id?h('button',{class:'link',type:'button',style:'margin-top:8px',onclick:function(){
+        if(window.confirm('Esborrar «'+f.title+'»?'))lAct(function(){return api.delDate(f.id);},'Data esborrada').then(function(){S.dateForm=null;renderCal(true);});
+      }},'Esborrar aquesta data'):null));
+  }
+  z.replaceChildren(h('section',{class:'card'},h('h2',null,'Calendari'),parts));
+}
+function saveDateForm(){
+  var f=S.dateForm,title=(f.title||'').trim(),pd=parseDay(f.date);
+  if(title.length<2){toast('Escriu un nom per a la data.');return;}
+  if(!pd){toast('Tria el dia.');return;}
+  var row={title:title,repeat:f.repeat,month:f.repeat==='monthly'?null:pd.getMonth()+1,day:pd.getDate(),
+    since:(f.repeat==='once'||f.count)?ymd(pd):null};
+  if(f.id)row.id=f.id;
+  lAct(function(){return api.saveDate(row);},'Data guardada').then(function(){S.dateForm=null;renderCal(true);});
+}
 
 /* ---------- xat ---------- */
 function dayLabel(ts){
@@ -1129,7 +1252,7 @@ function renderAll(){
   $('btn-out').hidden=!S.authed;
   $('btn-colors').hidden=!(S.authed&&ready()&&S.who);
   $('btn-push').hidden=!(S.authed&&ready()&&S.who&&cfg.vapid);
-  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderChat();renderGames();renderC4();renderHugs();renderShop();renderLetters();renderAdd();renderRewards();renderWall();
+  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderChat();renderCal();renderGames();renderC4();renderHugs();renderShop();renderLetters();renderAdd();renderRewards();renderWall();
 }
 
 /* challenge slot lives above the form */
@@ -1159,6 +1282,8 @@ var api={
     if(x.error&&/tz/i.test(x.error.message||'')){var r2=Object.assign({},r);delete r2.tz;return sb.from('pp_places').upsert(r2);}
     return x;}).then(chk).then(loadAll);},
   saveMeet:function(v){return sb.from('pp_extra').upsert({id:1,meet_date:v,ts:new Date().toISOString()}).then(chk).then(loadAll);},
+  saveDate:function(r){var q=r.id?sb.from('pp_dates').update(r).eq('id',r.id):sb.from('pp_dates').insert(r);return q.then(chk).then(loadAll);},
+  delDate:function(id){return sb.from('pp_dates').delete().eq('id',id).then(chk).then(loadAll);},
   sendChat:function(r){return sb.from('pp_chat').insert(r).then(chk).then(loadAll);},
   readChat:function(p){return sb.from('pp_chat').update({read_at:new Date().toISOString()}).eq('from_player',p).is('read_at',null).then(chk).then(loadAll);},
   addOffer:function(r){return sb.from('pp_offers').insert(r).then(chk).then(loadAll);},
@@ -1210,7 +1335,8 @@ function loadAll(){
     sb.from('pp_offers').select('*').order('ts',{ascending:false}).limit(300),
     sb.from('pp_redeems').select('*').order('ts',{ascending:false}).limit(500),
     sb.from('pp_c4').select('*').order('ts',{ascending:false}).limit(200),
-    sb.from('pp_chat').select('*').order('ts',{ascending:false}).limit(200)
+    sb.from('pp_chat').select('*').order('ts',{ascending:false}).limit(200),
+    sb.from('pp_dates').select('*')
   ]).then(function(rs){
     var c=rs[0].data;
     var fx=cfg.names;
@@ -1226,13 +1352,14 @@ function loadAll(){
     S.meet=(rs[8]&&rs[8].data&&rs[8].data.meet_date)||null;backfillTz();
     S.offers=(rs[9]&&rs[9].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,title:x.title,cost:+x.cost};});
     S.redeems=(rs[10]&&rs[10].data||[]).map(function(x){return {id:x.id,offerer:x.offerer,buyer:x.buyer,title:x.title,cost:+x.cost,status:x.status,ts:new Date(x.ts).getTime()};});
+    S.dates=(rs[13]&&rs[13].data||[]).map(function(x){var p=x.since?/^(\d{4})-(\d{2})-(\d{2})/.exec(x.since):null;return {id:x.id,title:x.title,repeat:x.repeat,month:x.month,day:+x.day,since:p?{y:+p[1],m:+p[2],d:+p[3]}:null};});
     S.chat=(rs[12]&&rs[12].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,body:x.body,ts:new Date(x.ts).getTime(),read:!!x.read_at};}).reverse();
     S.c4=(rs[11]&&rs[11].data||[]).map(function(x){return {id:x.id,starter:x.starter,board:x.board,turn:x.turn,status:x.status,winner:x.winner,last_by:x.last_by,moves:+x.moves,ts:new Date(x.ts).getTime()};});
     S.letters=(rs[7].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,to_player:x.to_player,transport:x.transport,distance_km:x.distance_km,body:x.body,sent:new Date(x.sent_at).getTime(),arrive:new Date(x.arrive_at).getTime(),read:!!x.read_at};});
     S.ai={};S.answers.forEach(function(a){S.ai[a.day+'|'+a.game+'|'+a.slot+'|'+a.player]=a;});
     if(S.editNames||document.activeElement&&(document.activeElement.id==='phrase'||document.activeElement.id==='qans')){
       renderBoard();renderChallengeCard();renderRewards();renderWall();
-      if(!S.editNames){renderMeet();renderChat();renderC4();renderShop();renderGames();renderHugs();renderLetters();renderAdd();}
+      if(!S.editNames){renderMeet();renderChat();renderCal();renderC4();renderShop();renderGames();renderHugs();renderLetters();renderAdd();}
     }else renderAll();
   }).catch(function(){toast('No he pogut carregar el marcador.');});
 }
