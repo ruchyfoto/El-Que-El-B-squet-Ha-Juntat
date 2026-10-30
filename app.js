@@ -90,7 +90,7 @@ var T=[
 var QPTS=2,TPTS=1;
 
 
-var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},hugs:[],places:{a:null,b:null},letters:[],ltr:null,openL:null,editPlace:false,lsig:'',colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
+var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},hugs:[],places:{a:null,b:null},letters:[],offers:[],redeems:[],c4:[],ltr:null,openL:null,editPlace:false,lsig:'',colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
 try{S.who=localStorage.getItem('who')||null;}catch(e){}
 
 function h(tag,props){
@@ -609,6 +609,149 @@ function renderLetterLists(){
 setInterval(function(){if(S.authed&&ready()&&S.who)renderLetterLists();updateCta();},30000);
 
 
+/* ---------- botiga de cupons ---------- */
+function spent(p){return S.redeems.reduce(function(s,x){return x.buyer===p?s+x.cost:s;},0);}
+function bal(p){return score(p)-spent(p);}
+var SUG=[
+ ['Un sopar cuinat per mi quan ens veiem',30],['Tria tu la pel·lícula',10],['Una videotrucada de 2 hores sense mirar el mòbil',15],
+ ['Una carta escrita a mà',25],['Esmorzar al llit',30],['Una cançó dedicada',10],['Tria tu el pla del dissabte',40],['Un massatge de 20 minuts',35]
+];
+function renderShop(){
+  var z=$('shop');
+  if(!ready()||!S.who){z.replaceChildren();return;}
+  var me=S.who,ot=other(me),b=bal(me);
+  var sig=JSON.stringify([me,S.names,b,S.offers,S.redeems]);
+  var ae=document.activeElement;
+  if(z.firstChild&&(S.shsig===sig||(ae&&(ae.id==='oft'||ae.id==='ofc'))))return;
+  var pt=document.getElementById('oft'),pc=document.getElementById('ofc');
+  var keepT=pt?pt.value:'',keepC=pc?pc.value:'20';
+  var parts=[];
+  parts.push(h('div',{class:'mrow'},h('span',{class:'mnum'},String(b)),h('span',{class:'mlab'},b===1?'punt per gastar':'punts per gastar')),
+    h('p',{class:'tiny',style:'margin:4px 0 0'},'Gastar punts no et fa baixar al marcador: només compta el que has guanyat.'));
+  // cupons de l'altre
+  var theirs=S.offers.filter(function(x){return x.from_player===ot;}).sort(function(x,y){return x.cost-y.cost;});
+  parts.push(h('span',{class:'lab'},'Cupons de '+nm(ot)));
+  if(!theirs.length)parts.push(h('p',{class:'tiny',style:'margin:0'},nm(ot)+' encara no ha afegit cap cupó.'));
+  theirs.forEach(function(x){
+    parts.push(h('div',{class:'shr'},h('div',{class:'shl'},h('div',{class:'ltt'},x.title),h('div',{class:'tiny'},x.cost+' punts')),
+      h('button',{class:'btn sm '+me,type:'button',disabled:b<x.cost,onclick:function(){
+        if(bal(me)<x.cost){toast('No tens prou punts.');return;}
+        if(!window.confirm('Canviar «'+x.title+'» per '+x.cost+' punts?'))return;
+        lAct(function(){return api.redeem({offer_id:x.id,offerer:ot,buyer:me,title:x.title,cost:x.cost});},'Cupó canviat. '+nm(ot)+' rebrà un avís.');
+      }},b<x.cost?'Et falten '+(x.cost-b):'Canviar')));
+  });
+  // per complir
+  var todo=S.redeems.filter(function(x){return x.offerer===me&&x.status==='pending';});
+  if(todo.length){
+    parts.push(h('span',{class:'lab'},'Pendents de complir'));
+    todo.forEach(function(x){
+      parts.push(h('div',{class:'shr'},h('div',{class:'shl'},h('div',{class:'ltt'},x.title),h('div',{class:'tiny'},nm(x.buyer)+' l’ha canviat per '+x.cost+' punts')),
+        h('button',{class:'btn sm '+me,type:'button',onclick:function(){lAct(function(){return api.doneRedeem(x.id);},'Marcat com a fet');}},'Fet')));
+    });
+  }
+  // els meus canvis
+  var mine=S.redeems.filter(function(x){return x.buyer===me;}).slice(0,10);
+  if(mine.length){
+    parts.push(h('span',{class:'lab'},'Els teus cupons'));
+    mine.forEach(function(x){
+      parts.push(h('div',{class:'shr'},h('div',{class:'shl'},h('div',{class:'ltt'},x.title),h('div',{class:'tiny'},x.status==='done'?'Complert per '+nm(x.offerer):'Esperant que '+nm(x.offerer)+' el compleixi')),
+        h('span',{class:'tag '+(x.status==='done'?'ok':'')},x.status==='done'?'Fet':'Pendent')));
+    });
+  }
+  // els meus cupons a la botiga
+  var ofs=S.offers.filter(function(x){return x.from_player===me;}).sort(function(x,y){return x.cost-y.cost;});
+  parts.push(h('span',{class:'lab'},'Els teus cupons a la botiga'));
+  if(!ofs.length)parts.push(h('p',{class:'tiny',style:'margin:0 0 8px'},'Afegeix coses que vols oferir a '+nm(ot)+'. Ho podrà canviar amb els seus punts.'));
+  ofs.forEach(function(x){
+    parts.push(h('div',{class:'shr'},h('div',{class:'shl'},h('div',{class:'ltt'},x.title),h('div',{class:'tiny'},x.cost+' punts')),
+      h('button',{class:'link',type:'button',onclick:function(){if(window.confirm('Treure «'+x.title+'» de la botiga?'))lAct(function(){return api.delOffer(x.id);});}},'Treure')));
+  });
+  var ti=h('input',{type:'text',id:'oft',maxlength:'80',placeholder:'Ex.: Un sopar cuinat per mi',value:keepT});
+  var ci=h('input',{type:'number',id:'ofc',min:'1',max:'500',inputmode:'numeric',value:keepC||'20',style:'width:90px;flex:none'});
+  parts.push(h('div',{class:'row',style:'margin-top:8px'},ti,ci,h('span',{class:'tiny',style:'flex:none'},'punts')),
+    h('button',{class:'btn '+me,type:'button',onclick:function(){
+      var title=ti.value.trim(),cost=parseInt(ci.value,10);
+      if(title.length<2){toast('Escriu què ofereixes.');ti.focus();return;}
+      if(!(cost>=1&&cost<=500)){toast('El preu ha de ser entre 1 i 500 punts.');return;}
+      lAct(function(){return api.addOffer({from_player:me,title:title,cost:cost});},'Cupó afegit a la botiga').then(function(){ti.value='';});
+    }},'Afegir a la botiga'),
+    h('span',{class:'lab'},'Idees'),
+    h('div',{class:'chips'},SUG.map(function(x){return h('button',{class:'chip',type:'button',onclick:function(){ti.value=x[0];ci.value=String(x[1]);}},x[0]);})));
+  S.shsig=sig;
+  z.replaceChildren(h('section',{class:'card'},h('h2',null,'Botiga de cupons'),parts));
+}
+
+/* ---------- quatre en ratlla ---------- */
+var C4W=7,C4H=6;
+function c4Drop(b,col,pl){
+  for(var r=C4H-1;r>=0;r--){var i=r*C4W+col;if(b.charAt(i)==='.')return {board:b.slice(0,i)+pl+b.slice(i+1),idx:i};}
+  return null;
+}
+function c4Line(b,pl){
+  var dirs=[[0,1],[1,0],[1,1],[1,-1]],r,c,d,k,cells;
+  for(r=0;r<C4H;r++)for(c=0;c<C4W;c++){
+    for(d=0;d<dirs.length;d++){
+      cells=[];
+      for(k=0;k<4;k++){
+        var rr=r+dirs[d][0]*k,cc=c+dirs[d][1]*k;
+        if(rr<0||rr>=C4H||cc<0||cc>=C4W||b.charAt(rr*C4W+cc)!==pl)break;
+        cells.push(rr*C4W+cc);
+      }
+      if(cells.length===4)return cells;
+    }
+  }
+  return null;
+}
+function c4Move(g,col){
+  var me=S.who,ot=other(me);
+  if(!g||g.status!=='playing'||g.turn!==me)return;
+  var r=c4Drop(g.board,col,me);if(!r){toast('Aquesta columna és plena.');return;}
+  var win=c4Line(r.board,me),full=r.board.indexOf('.')<0;
+  var patch={board:r.board,turn:ot,last_by:me,moves:g.moves+1,status:win?'won':(full?'draw':'playing'),winner:win?me:null};
+  lAct(function(){return api.moveC4(g.id,me,patch);},win?'Has guanyat!':null);
+}
+function renderC4(){
+  var z=$('c4');
+  if(!ready()||!S.who){z.replaceChildren();return;}
+  var me=S.who,ot=other(me),cur=S.c4[0],parts=[];
+  var w={a:0,b:0,d:0};
+  S.c4.forEach(function(g){if(g.status==='won'&&g.winner)w[g.winner]++;else if(g.status==='draw')w.d++;});
+  parts.push(h('div',{class:'c4t'},
+    h('span',{class:'nm2'},h('span',{class:'dot',style:'background:var(--'+me+')'}),nm(me)+' '+w[me]),
+    h('span',{class:'tiny'},'empats '+w.d),
+    h('span',{class:'nm2'},nm(ot)+' '+w[ot],h('span',{class:'dot',style:'background:var(--'+ot+')'}))));
+  if(cur){
+    var line=cur.status==='won'?c4Line(cur.board,cur.winner):null,mine=cur.status==='playing'&&cur.turn===me;
+    var msg;
+    if(cur.status==='playing')msg=mine?'Et toca moure, '+nm(me)+'!':'Esperant que '+nm(ot)+' mogui fitxa…';
+    else if(cur.status==='won')msg=cur.winner===me?'Has guanyat! ♥':nm(cur.winner)+' ha guanyat.';
+    else msg='Empat: el tauler és ple.';
+    parts.push(h('p',{class:'c4m'+(mine?' me':'')},msg));
+    var cols=[];
+    for(var c=0;c<C4W;c++){
+      var cells=[],full=cur.board.charAt(c)!=='.';
+      for(var r=0;r<C4H;r++){
+        var i=r*C4W+c,v=cur.board.charAt(i);
+        cells.push(h('div',{class:'c4p '+(v==='.'?'e':v)+(line&&line.indexOf(i)>=0?' win':'')}));
+      }
+      (function(col){
+        cols.push(h('button',{class:'c4c',type:'button','aria-label':'Tirar la fitxa a la columna '+(col+1),disabled:!mine||full,onclick:function(){c4Move(cur,col);}},cells));
+      })(c);
+    }
+    parts.push(h('div',{class:'c4b'},cols));
+  }else{
+    parts.push(h('p',{class:'tiny',style:'margin:8px 0'},'Quatre en ratlla: aneu jugant quan pugueu. Cadascú mou quan li va bé i, si teniu els avisos activats, rebreu una notificació quan us toqui.'));
+  }
+  if(!cur||cur.status!=='playing'){
+    var first=!cur?ot:(cur.status==='won'?other(cur.winner):other(cur.starter));
+    parts.push(h('button',{class:'btn '+me,type:'button',onclick:function(){
+      lAct(function(){return api.newC4({starter:first,turn:first,board:'.'.repeat(C4W*C4H),status:'playing',moves:0});},'Partida nova. Comença '+nm(first)+'.');
+    }},cur?'Nova partida':'Començar una partida'),
+    h('p',{class:'tiny',style:'margin:8px 0 0'},'Comença '+nm(first)+(cur&&cur.status==='won'?' (qui ha perdut).':'.')));
+  }
+  z.replaceChildren(h('section',{class:'card'},h('h2',null,'Quatre en ratlla'),parts));
+}
+
 /* ---------- notificacions push ---------- */
 function urlB64(b){var p='='.repeat((4-b.length%4)%4),t=(b+p).replace(/-/g,'+').replace(/_/g,'/'),r=atob(t),o=new Uint8Array(r.length);for(var i=0;i<r.length;i++)o[i]=r.charCodeAt(i);return o;}
 function isIOS(){return /iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);}
@@ -918,7 +1061,7 @@ function renderAll(){
   $('btn-out').hidden=!S.authed;
   $('btn-colors').hidden=!(S.authed&&ready()&&S.who);
   $('btn-push').hidden=!(S.authed&&ready()&&S.who&&cfg.vapid);
-  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderGames();renderHugs();renderLetters();renderAdd();renderRewards();renderWall();
+  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderGames();renderC4();renderHugs();renderShop();renderLetters();renderAdd();renderRewards();renderWall();
 }
 
 /* challenge slot lives above the form */
@@ -948,6 +1091,12 @@ var api={
     if(x.error&&/tz/i.test(x.error.message||'')){var r2=Object.assign({},r);delete r2.tz;return sb.from('pp_places').upsert(r2);}
     return x;}).then(chk).then(loadAll);},
   saveMeet:function(v){return sb.from('pp_extra').upsert({id:1,meet_date:v,ts:new Date().toISOString()}).then(chk).then(loadAll);},
+  addOffer:function(r){return sb.from('pp_offers').insert(r).then(chk).then(loadAll);},
+  delOffer:function(id){return sb.from('pp_offers').delete().eq('id',id).then(chk).then(loadAll);},
+  redeem:function(r){return sb.from('pp_redeems').insert(r).then(chk).then(loadAll);},
+  doneRedeem:function(id){return sb.from('pp_redeems').update({status:'done',done_at:new Date().toISOString()}).eq('id',id).eq('status','pending').then(chk).then(loadAll);},
+  newC4:function(r){return sb.from('pp_c4').insert(r).then(chk).then(loadAll);},
+  moveC4:function(id,me,patch){return sb.from('pp_c4').update(patch).eq('id',id).eq('status','playing').eq('turn',me).then(chk).then(loadAll);},
   sendLetter:function(r){return sb.from('pp_letters').insert(r).then(chk).then(loadAll);},
   readLetter:function(id){return sb.from('pp_letters').update({read_at:new Date().toISOString()}).eq('id',id).is('read_at',null).then(chk).then(loadAll);},
   giveHug:function(){var n=new Date();return sb.from('pp_hugs').insert({kind:'give',from_player:S.who,status:'done',day:dayKey(n)}).then(chk).then(loadAll);},
@@ -987,7 +1136,10 @@ function loadAll(){
     sb.from('pp_hugs').select('*').order('ts',{ascending:false}).limit(500),
     sb.from('pp_places').select('*'),
     sb.from('pp_letters').select('*').order('sent_at',{ascending:false}).limit(300),
-    sb.from('pp_extra').select('*').eq('id',1).maybeSingle()
+    sb.from('pp_extra').select('*').eq('id',1).maybeSingle(),
+    sb.from('pp_offers').select('*').order('ts',{ascending:false}).limit(300),
+    sb.from('pp_redeems').select('*').order('ts',{ascending:false}).limit(500),
+    sb.from('pp_c4').select('*').order('ts',{ascending:false}).limit(200)
   ]).then(function(rs){
     var c=rs[0].data;
     var fx=cfg.names;
@@ -1001,11 +1153,14 @@ function loadAll(){
     S.hugs=(rs[5].data||[]).map(function(x){return {id:x.id,kind:x.kind,from_player:x.from_player,status:x.status,day:x.day,ret_day:x.ret_day,ts:new Date(x.ts).getTime()};});
     S.places={a:null,b:null};(rs[6].data||[]).forEach(function(x){if(x.player==='a'||x.player==='b')S.places[x.player]={name:x.name,lat:x.lat,lon:x.lon,tz:x.tz||null};});
     S.meet=(rs[8]&&rs[8].data&&rs[8].data.meet_date)||null;backfillTz();
+    S.offers=(rs[9]&&rs[9].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,title:x.title,cost:+x.cost};});
+    S.redeems=(rs[10]&&rs[10].data||[]).map(function(x){return {id:x.id,offerer:x.offerer,buyer:x.buyer,title:x.title,cost:+x.cost,status:x.status,ts:new Date(x.ts).getTime()};});
+    S.c4=(rs[11]&&rs[11].data||[]).map(function(x){return {id:x.id,starter:x.starter,board:x.board,turn:x.turn,status:x.status,winner:x.winner,last_by:x.last_by,moves:+x.moves,ts:new Date(x.ts).getTime()};});
     S.letters=(rs[7].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,to_player:x.to_player,transport:x.transport,distance_km:x.distance_km,body:x.body,sent:new Date(x.sent_at).getTime(),arrive:new Date(x.arrive_at).getTime(),read:!!x.read_at};});
     S.ai={};S.answers.forEach(function(a){S.ai[a.day+'|'+a.game+'|'+a.slot+'|'+a.player]=a;});
     if(S.editNames||document.activeElement&&(document.activeElement.id==='phrase'||document.activeElement.id==='qans')){
       renderBoard();renderChallengeCard();renderRewards();renderWall();
-      if(!S.editNames){renderMeet();renderGames();renderHugs();renderLetters();renderAdd();}
+      if(!S.editNames){renderMeet();renderC4();renderShop();renderGames();renderHugs();renderLetters();renderAdd();}
     }else renderAll();
   }).catch(function(){toast('No he pogut carregar el marcador.');});
 }
