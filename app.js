@@ -90,7 +90,7 @@ var T=[
 var QPTS=2,TPTS=1;
 
 
-var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},hugs:[],places:{a:null,b:null},letters:[],offers:[],redeems:[],c4:[],chat:[],chatOpen:false,dates:[],calSel:null,calMonth:null,dateForm:null,ltr:null,openL:null,editPlace:false,lsig:'',colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
+var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},hugs:[],kisses:[],places:{a:null,b:null},letters:[],offers:[],redeems:[],c4:[],chat:[],chatOpen:false,dates:[],calSel:null,calMonth:null,dateForm:null,ltr:null,openL:null,editPlace:false,lsig:'',colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
 try{S.who=localStorage.getItem('who')||null;}catch(e){}
 
 function h(tag,props){
@@ -128,10 +128,10 @@ function toast(msg){
 function nm(p){return (S.names&&S.names[p])||(p==='a'?'Jugador 1':'Jugador 2');}
 function other(p){return p==='a'?'b':'a';}
 function catOf(k){return k==='repte'?REPTE:(CATS.filter(function(c){return c.k===k;})[0]||CATS[0]);}
-function score(p){return S.moments.reduce(function(s,m){return m.speaker===p?s+(+m.pts||0):s;},0)+gamePts(p)+hugPts(p);}
+function score(p){return S.moments.reduce(function(s,m){return m.speaker===p?s+(+m.pts||0):s;},0)+gamePts(p)+hugPts(p)+kissPts(p);}
 function level(p){return Math.floor(score(p)/STEP);}
 function streak(p){
-  var days={};S.moments.forEach(function(m){if(m.speaker===p)days[m.day]=1;});S.answers.forEach(function(a){if(a.player===p)days[a.day]=1;});S.hugs.forEach(function(x){if(x.from_player===p)days[x.day]=1;if(x.status==='returned'&&x.from_player!==p&&x.ret_day)days[x.ret_day]=1;});
+  var days={};S.moments.forEach(function(m){if(m.speaker===p)days[m.day]=1;});S.answers.forEach(function(a){if(a.player===p)days[a.day]=1;});S.hugs.forEach(function(x){if(x.from_player===p)days[x.day]=1;if(x.status==='returned'&&x.from_player!==p&&x.ret_day)days[x.ret_day]=1;});S.kisses.forEach(function(x){if(x.from_player===p)days[x.day]=1;if(x.status==='returned'&&x.from_player!==p&&x.ret_day)days[x.ret_day]=1;});
   var d=new Date();d.setHours(12,0,0,0);
   if(!days[dayKey(d)])d.setDate(d.getDate()-1);
   var n=0;while(days[dayKey(d)]){n++;d.setDate(d.getDate()-1);}
@@ -271,6 +271,49 @@ function renderHugs(){
   });
   if(rows.length)parts.push(h('div',{class:'hugs'},rows));
   z.replaceChildren(h('section',{class:'card'},h('h2',null,'Abraçades'),parts));
+}
+
+/* ---------- petons (màxim 3 al dia per persona) ---------- */
+var KISSPTS=1,KISSMAX=3;
+function kissPts(p){
+  var n=0;
+  S.kisses.forEach(function(x){
+    if(x.kind==='give'){if(x.from_player===p)n+=KISSPTS;}
+    else if(x.status==='returned')n+=KISSPTS;
+  });
+  return n;
+}
+function kissesToday(p){var k=dayKey(new Date());return S.kisses.filter(function(x){return x.from_player===p&&x.day===k;}).length;}
+var kSaving=false;
+function kissAct(fn,msg){
+  if(kSaving)return;kSaving=true;
+  fn().then(function(){toast(msg);}).catch(function(e){toast(saveErr(e));}).then(function(){kSaving=false;renderKisses();});
+}
+function renderKisses(){
+  var z=$('kisses');
+  if(!ready()||!S.who){z.replaceChildren();return;}
+  var me=S.who,ot=other(me),used=kissesToday(me),left=Math.max(0,KISSMAX-used);
+  var inc=S.kisses.filter(function(x){return x.kind==='ask'&&x.status==='pending'&&x.from_player===ot;});
+  var out=S.kisses.filter(function(x){return x.kind==='ask'&&x.status==='pending'&&x.from_player===me;});
+  var give=h('button',{class:'btn sm '+me,type:'button',disabled:left<1,onclick:function(){kissAct(function(){return api.giveKiss();},'Petó donat: +'+KISSPTS);}},left<1?'Límit d\'avui assolit':'Donar petó · +'+KISSPTS);
+  var ask=h('button',{class:'btn sm ghost',type:'button',disabled:out.length>0||left<1,onclick:function(){kissAct(function(){return api.askKiss();},'Petó demanat');}},out.length?'Ja n\'has demanat un':'Demanar petó');
+  var dots=[];for(var i=0;i<KISSMAX;i++)dots.push(h('span',{class:'kdot'+(i<used?' on':'')},'♥'));
+  var parts=[h('div',{class:'hugbtns'},give,ask),
+    h('div',{class:'kleft'},h('span',{class:'tiny'},'Petons d\'avui: '+used+' de '+KISSMAX),h('span',{class:'kdots','aria-hidden':'true'},dots))];
+  inc.forEach(function(x){
+    parts.push(h('div',{class:'hugreq'},h('div',null,h('b',null,nm(ot)),' et demana un petó.'),
+      h('button',{class:'btn sm '+me,type:'button',onclick:function(){kissAct(function(){return api.returnKiss(x.id);},'Petó tornat: +'+KISSPTS+' per als dos');}},'Tornar el petó · +'+KISSPTS+' per als dos')));
+  });
+  if(out.length)parts.push(h('p',{class:'tiny',style:'margin:10px 0 0'},'Esperant que '+nm(ot)+' et torni el petó. Si el torna, sumeu '+KISSPTS+' punt cadascú.'));
+  var rows=S.kisses.slice().sort(function(x,y){return y.ts-x.ts;}).slice(0,6).map(function(x){
+    var txt;
+    if(x.kind==='give')txt=nm(x.from_player)+' ha donat un petó · +'+KISSPTS;
+    else if(x.status==='returned')txt=nm(other(x.from_player))+' ha tornat el petó a '+nm(x.from_player)+' · +'+KISSPTS+' cadascú';
+    else txt=nm(x.from_player)+' ha demanat un petó · pendent';
+    return h('div',{class:'hugrow'},h('span',null,txt),h('span',{class:'tiny'},fmtWhen(x.ts)));
+  });
+  if(rows.length)parts.push(h('div',{class:'hugs'},rows));
+  z.replaceChildren(h('section',{class:'card'},h('h2',null,'Petons'),parts));
 }
 
 /* ---------- retrobada i hora de l'altre ---------- */
@@ -698,7 +741,7 @@ function renderCal(force){
       u.x.ev.fixed?null:h('button',{class:'link',type:'button',onclick:function(){dateFormOpen(u.x.ev);}},'Editar')));
   });
   if(!up.length)parts.push(h('p',{class:'tiny',style:'margin:0'},'Encara no hi ha dates. Afegeix-ne alguna!'));
-  parts.push(h('p',{class:'tiny',style:'margin:10px 0 0'},'Rebreu un avís el mateix dia a les 9:00. La retrobada surt automàticament del compte enrere.'));
+  parts.push(h('p',{class:'tiny',style:'margin:10px 0 0'},'Rebreu un avís el mateix dia a les 00:00 (hora de Madrid). La retrobada surt automàticament del compte enrere.'));
   // formulari
   var f=S.dateForm;
   if(!f){
@@ -1252,7 +1295,7 @@ function renderAll(){
   $('btn-out').hidden=!S.authed;
   $('btn-colors').hidden=!(S.authed&&ready()&&S.who);
   $('btn-push').hidden=!(S.authed&&ready()&&S.who&&cfg.vapid);
-  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderChat();renderCal();renderGames();renderC4();renderHugs();renderShop();renderLetters();renderAdd();renderRewards();renderWall();
+  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderChat();renderCal();renderGames();renderC4();renderHugs();renderKisses();renderShop();renderLetters();renderAdd();renderRewards();renderWall();
 }
 
 /* challenge slot lives above the form */
@@ -1294,6 +1337,9 @@ var api={
   moveC4:function(id,me,patch){return sb.from('pp_c4').update(patch).eq('id',id).eq('status','playing').eq('turn',me).then(chk).then(loadAll);},
   sendLetter:function(r){return sb.from('pp_letters').insert(r).then(chk).then(loadAll);},
   readLetter:function(id){return sb.from('pp_letters').update({read_at:new Date().toISOString()}).eq('id',id).is('read_at',null).then(chk).then(loadAll);},
+  giveKiss:function(){var n=new Date();return sb.from('pp_kisses').insert({kind:'give',from_player:S.who,status:'done',day:dayKey(n)}).then(chk).then(loadAll);},
+  askKiss:function(){var n=new Date();return sb.from('pp_kisses').insert({kind:'ask',from_player:S.who,status:'pending',day:dayKey(n)}).then(chk).then(loadAll);},
+  returnKiss:function(id){var n=new Date();return sb.from('pp_kisses').update({status:'returned',ret_day:dayKey(n),ret_ts:n.toISOString()}).eq('id',id).eq('status','pending').then(chk).then(loadAll);},
   giveHug:function(){var n=new Date();return sb.from('pp_hugs').insert({kind:'give',from_player:S.who,status:'done',day:dayKey(n)}).then(chk).then(loadAll);},
   askHug:function(){var n=new Date();return sb.from('pp_hugs').insert({kind:'ask',from_player:S.who,status:'pending',day:dayKey(n)}).then(chk).then(loadAll);},
   returnHug:function(id){var n=new Date();return sb.from('pp_hugs').update({status:'returned',ret_day:dayKey(n),ret_ts:n.toISOString()}).eq('id',id).eq('status','pending').then(chk).then(loadAll);},
@@ -1303,6 +1349,7 @@ var api={
 };
 function saveErr(e){
   var m=String(e&&e.message||e||'');
+  if(/petons al dia/i.test(m))return 'Ja has fet els '+KISSMAX+' petons d\'avui. Demà més!';
   if(/row-level security|permission|policy/i.test(m))return 'No tens permís: el teu correu no és a pp_allowed (o falta executar supabase.sql).';
   if(/does not exist|schema cache|relation|Could not find/i.test(m))return 'Falta una taula a Supabase: executa supabase.sql i supabase_jocs.sql.';
   if(/fetch|network|load failed/i.test(m))return 'No puc connectar amb Supabase.';
@@ -1336,7 +1383,8 @@ function loadAll(){
     sb.from('pp_redeems').select('*').order('ts',{ascending:false}).limit(500),
     sb.from('pp_c4').select('*').order('ts',{ascending:false}).limit(200),
     sb.from('pp_chat').select('*').order('ts',{ascending:false}).limit(200),
-    sb.from('pp_dates').select('*')
+    sb.from('pp_dates').select('*'),
+    sb.from('pp_kisses').select('*').order('ts',{ascending:false}).limit(500)
   ]).then(function(rs){
     var c=rs[0].data;
     var fx=cfg.names;
@@ -1353,13 +1401,14 @@ function loadAll(){
     S.offers=(rs[9]&&rs[9].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,title:x.title,cost:+x.cost};});
     S.redeems=(rs[10]&&rs[10].data||[]).map(function(x){return {id:x.id,offerer:x.offerer,buyer:x.buyer,title:x.title,cost:+x.cost,status:x.status,ts:new Date(x.ts).getTime()};});
     S.dates=(rs[13]&&rs[13].data||[]).map(function(x){var p=x.since?/^(\d{4})-(\d{2})-(\d{2})/.exec(x.since):null;return {id:x.id,title:x.title,repeat:x.repeat,month:x.month,day:+x.day,since:p?{y:+p[1],m:+p[2],d:+p[3]}:null};});
+    S.kisses=(rs[14]&&rs[14].data||[]).map(function(x){return {id:x.id,kind:x.kind,from_player:x.from_player,status:x.status,day:x.day,ret_day:x.ret_day,ts:new Date(x.ts).getTime()};});
     S.chat=(rs[12]&&rs[12].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,body:x.body,ts:new Date(x.ts).getTime(),read:!!x.read_at};}).reverse();
     S.c4=(rs[11]&&rs[11].data||[]).map(function(x){return {id:x.id,starter:x.starter,board:x.board,turn:x.turn,status:x.status,winner:x.winner,last_by:x.last_by,moves:+x.moves,ts:new Date(x.ts).getTime()};});
     S.letters=(rs[7].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,to_player:x.to_player,transport:x.transport,distance_km:x.distance_km,body:x.body,sent:new Date(x.sent_at).getTime(),arrive:new Date(x.arrive_at).getTime(),read:!!x.read_at};});
     S.ai={};S.answers.forEach(function(a){S.ai[a.day+'|'+a.game+'|'+a.slot+'|'+a.player]=a;});
     if(S.editNames||document.activeElement&&(document.activeElement.id==='phrase'||document.activeElement.id==='qans')){
       renderBoard();renderChallengeCard();renderRewards();renderWall();
-      if(!S.editNames){renderMeet();renderChat();renderCal();renderC4();renderShop();renderGames();renderHugs();renderLetters();renderAdd();}
+      if(!S.editNames){renderMeet();renderChat();renderCal();renderC4();renderShop();renderGames();renderHugs();renderKisses();renderLetters();renderAdd();}
     }else renderAll();
   }).catch(function(){toast('No he pogut carregar el marcador.');});
 }

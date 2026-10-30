@@ -266,3 +266,9 @@ input[type=number]{font:inherit;color:var(--fg);background:var(--soft);border:1.
 select{width:100%;font:inherit;color:var(--fg);background:var(--soft);border:1.5px solid var(--line);border-radius:14px;padding:11px 12px}
 .chk{display:flex;gap:10px;align-items:flex-start;margin-top:12px;font-size:14px}
 .chk input{margin-top:3px;width:18px;height:18px;flex:none}
+
+/* petons */
+.kleft{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}
+.kdots{display:inline-flex;gap:4px}
+.kdot{color:var(--line);font-size:18px;line-height:1}
+.kdot.on{color:var(--a)}
