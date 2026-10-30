@@ -194,3 +194,16 @@ body{background:radial-gradient(900px 420px at 50% -120px,rgba(240,112,138,.18),
 .btn.cta.has{animation:pulse 2.2s ease-in-out infinite}
 @keyframes pulse{0%,100%{box-shadow:0 8px 18px -10px rgba(122,40,70,.6)}50%{box-shadow:0 0 0 6px rgba(240,112,138,.28)}}
 @media (prefers-reduced-motion:reduce){.btn.cta.has{animation:none}}
+
+/* retrobada i hora */
+.meet{padding:16px 20px}
+.mrow{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.mnum{font:italic 700 clamp(44px,13vw,64px)/.9 var(--display);color:var(--a);font-variant-numeric:lining-nums}
+.mlab{font:italic 600 22px/1.1 var(--display)}
+.mbig{font:italic 700 30px/1.1 var(--display)}
+.heart{color:var(--a)}
+.mclock{display:flex;gap:12px;align-items:center;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+.mclock .sun{font-size:26px;line-height:1;color:var(--a)}
+.mclock .ctime{font-weight:700;font-variant-numeric:tabular-nums}
+.lcap{margin-top:4px}
+input[type=date],input[type=datetime-local]{width:100%;font:inherit;color:var(--fg);background:var(--soft);border:1.5px solid var(--line);border-radius:14px;padding:11px 12px}

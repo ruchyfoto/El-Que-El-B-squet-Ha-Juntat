@@ -273,6 +273,69 @@ function renderHugs(){
   z.replaceChildren(h('section',{class:'card'},h('h2',null,'Abraçades'),parts));
 }
 
+/* ---------- retrobada i hora de l'altre ---------- */
+function tzOffMin(tz,date){
+  try{
+    var o={};new Intl.DateTimeFormat('en-GB',{timeZone:tz,hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).formatToParts(date).forEach(function(x){o[x.type]=x.value;});
+    var u=Date.UTC(+o.year,+o.month-1,+o.day,+o.hour,+o.minute,+o.second);
+    return Math.round((u-Math.floor(date.getTime()/1000)*1000)/60000);
+  }catch(e){return null;}
+}
+function placeOff(pl,date){var o=pl.tz?tzOffMin(pl.tz,date):null;return o==null?Math.round(pl.lon/15)*60:o;}
+function nextAug1(){var n=new Date(),t=new Date(n.getFullYear(),n.getMonth(),n.getDate()),d=new Date(n.getFullYear(),7,1);if(d<t)d=new Date(n.getFullYear()+1,7,1);return d;}
+function parseDay(v){var m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(v||'');return m?new Date(+m[1],+m[2]-1,+m[3]):null;}
+function ymd(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
+function meetInfo(){
+  var n=new Date(),today=new Date(n.getFullYear(),n.getMonth(),n.getDate()),d=parseDay(S.meet),exact=true;
+  if(!d||d<today){d=nextAug1();exact=false;}
+  return {d:d,days:Math.round((d-today)/864e5),exact:exact};
+}
+function backfillTz(){
+  var m=S.who&&S.places&&S.places[S.who];
+  if(!m||m.tz||S.tzTry===S.who+'|'+m.name)return;
+  S.tzTry=S.who+'|'+m.name;
+  searchCity(shortPlace(m.name)).then(function(list){
+    var best=null,bd=1e9;
+    list.forEach(function(x){if(!x.tz)return;var dd=haversine(+m.lat,+m.lon,x.lat,x.lon);if(dd<bd){bd=dd;best=x;}});
+    if(best&&bd<60)return api.savePlace({player:S.who,name:m.name,lat:m.lat,lon:m.lon,tz:best.tz});
+  }).catch(function(){});
+}
+function renderMeet(){
+  var z=$('meet');if(!z)return;
+  if(!ready()||!S.who){z.replaceChildren();return;}
+  if(S.meetEdit&&z.firstChild)return;
+  var me=S.who,ot=other(me),mi=meetInfo(),parts=[];
+  var dtxt=mi.d.toLocaleDateString('ca',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  var big=mi.days===0?h('div',{class:'mbig'},'Avui us veieu ',h('span',{class:'heart'},'♥')):
+    h('div',{class:'mrow'},h('span',{class:'mnum'},String(mi.days)),h('span',{class:'mlab'},(mi.days===1?'dia':'dies')+' per veure’ns'));
+  parts.push(big,h('div',{class:'tiny'},(mi.exact?'':'Data orientativa: ')+dtxt));
+  if(S.meetEdit){
+    var inp=h('input',{type:'date',id:'meetd',value:mi.exact?ymd(mi.d):''});
+    parts.push(h('div',{class:'row',style:'margin-top:10px'},inp,
+      h('button',{class:'btn sm '+me,type:'button',onclick:function(){
+        var v=inp.value;if(!parseDay(v)){toast('Tria una data.');return;}
+        lAct(function(){return api.saveMeet(v);},'Data guardada').then(function(){S.meetEdit=false;z.replaceChildren();renderMeet();});
+      }},'Guardar')),
+      h('div',{class:'row',style:'margin-top:8px;gap:14px'},
+        h('button',{class:'link',type:'button',onclick:function(){lAct(function(){return api.saveMeet(null);},'Tornem a l’1 d’agost').then(function(){S.meetEdit=false;z.replaceChildren();renderMeet();});}},'Encara no sabem el dia'),
+        h('button',{class:'link',type:'button',onclick:function(){S.meetEdit=false;z.replaceChildren();renderMeet();}},'Cancel·lar')));
+  }else{
+    parts.push(h('button',{class:'link',type:'button',onclick:function(){S.meetEdit=true;z.replaceChildren();renderMeet();}},'Canviar la data'));
+  }
+  var pl=S.places&&S.places[ot];
+  if(pl){
+    var now=new Date(),off=placeOff(pl,now),d=new Date(now.getTime()+off*60000),hh=d.getUTCHours(),mm=d.getUTCMinutes();
+    var mine=S.places[me],myOff=mine?placeOff(mine,now):-now.getTimezoneOffset(),diff=(off-myOff)/60;
+    var approx=!(pl.tz&&tzOffMin(pl.tz,now)!=null);
+    var day=hh>=7&&hh<21,dtx=diff===0?'la mateixa hora':(diff>0?'+':'−')+Math.abs(Math.round(diff*10)/10).toString().replace('.',',')+' h respecte a tu';
+    parts.push(h('div',{class:'mclock'},h('span',{class:'sun'},day?'☀':'☾'),
+      h('div',null,h('div',{class:'ctime'},nm(ot)+' · '+pad(hh)+':'+pad(mm)),
+        h('div',{class:'tiny'},shortPlace(pl.name)+' · '+(day?'de dia':'de nit')+' · '+dtx+(approx?' (aprox.)':'')))));
+  }
+  z.replaceChildren(h('section',{class:'card meet'},parts));
+}
+setInterval(function(){if(S.authed&&ready()&&S.who)renderMeet();},30000);
+
 /* ---------- cartes ---------- */
 var TRANSPORTS=[
  {k:'colom',n:'Colom missatger',kmh:55,road:1,over:0,d:'Vola en línia recta, sense pressa.',
@@ -282,8 +345,11 @@ var TRANSPORTS=[
  {k:'vaixell',n:'Vaixell',kmh:30,road:1.15,over:240,d:'Lent, però segur. Inclou 4 h de càrrega.',
   svg:'<path d="M3 16h18l-2.5 4h-13z"/><path d="M12 3v13"/><path d="M12 4l6 9h-6"/><path d="M12 6L7 13h5"/>'},
  {k:'avio',n:'Avió',kmh:800,road:1,over:120,d:'El més ràpid. Inclou 2 h d\'aeroport.',
-  svg:'<path d="M21 3L3 10l7 3 3 7z"/><path d="M10 13l5-5"/>'}
+  svg:'<path d="M21 3L3 10l7 3 3 7z"/><path d="M10 13l5-5"/>'},
+ {k:'capsula',n:'Càpsula del temps',cap:true,d:'Tu tries el dia que s\'obrirà: un aniversari, un dia difícil, d\'aquí a un any…',
+  svg:'<path d="M6 3h12M6 21h12"/><path d="M7 3c0 5 5 6 5 9s-5 4-5 9M17 3c0 5-5 6-5 9s5 4 5 9"/>'}
 ];
+function isCap(x){return x&&x.transport==='capsula';}
 function trOf(k){return TRANSPORTS.filter(function(t){return t.k===k;})[0]||TRANSPORTS[0];}
 function icon(t){var s=document.createElement('span');s.className='ico';s.innerHTML='<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+t.svg+'</svg>';return s;}
 function haversine(a,b,c,d){
@@ -292,7 +358,7 @@ function haversine(a,b,c,d){
   return 2*R*Math.asin(Math.min(1,Math.sqrt(x)));
 }
 function distKm(){var a=S.places.a,b=S.places.b;return(a&&b)?haversine(+a.lat,+a.lon,+b.lat,+b.lon):null;}
-function etaMin(t,km){return Math.max(1,Math.round(t.over+km*t.road/t.kmh*60));}
+function etaMin(t,km){if(t.cap)return 1;return Math.max(1,Math.round(t.over+km*t.road/t.kmh*60));}
 function fmtDur(min){
   min=Math.max(0,Math.round(min));
   if(min<60)return min+' min';
@@ -305,13 +371,14 @@ function fmtClock(ts){
   var hm=pad(d.getHours())+':'+pad(d.getMinutes());
   if(t===today)return 'avui a les '+hm;
   if(t===dayKey(tm))return 'demà a les '+hm;
-  return d.toLocaleDateString('ca',{day:'numeric',month:'long'})+' a les '+hm;
+  var o={day:'numeric',month:'long'};if(d.getFullYear()!==n.getFullYear())o.year='numeric';
+  return d.toLocaleDateString('ca',o)+' a les '+hm;
 }
 function fmtKm(km){return Math.round(km).toLocaleString('ca')+' km';}
 function searchCity(q){
   return fetch('https://geocoding-api.open-meteo.com/v1/search?name='+encodeURIComponent(q)+'&count=6&language=ca&format=json')
     .then(function(r){if(!r.ok)throw new Error('geo');return r.json();})
-    .then(function(j){return (j.results||[]).map(function(x){return {name:[x.name,x.admin1,x.country].filter(Boolean).join(', '),lat:x.latitude,lon:x.longitude};});});
+    .then(function(j){return (j.results||[]).map(function(x){return {name:[x.name,x.admin1,x.country].filter(Boolean).join(', '),lat:x.latitude,lon:x.longitude,tz:x.timezone||null};});});
 }
 
 /* ---------- mapa de la carta ---------- */
@@ -403,7 +470,7 @@ function placePicker(){
     var sv=h('button',{class:'btn sm',type:'button',onclick:function(){
       var a=parseFloat(String(la.value).replace(',','.')),b=parseFloat(String(lo.value).replace(',','.'));
       if(!nmI.value.trim()||!isFinite(a)||!isFinite(b)||Math.abs(a)>90||Math.abs(b)>180){toast('Revisa el nom i les coordenades.');return;}
-      savePlace(nmI.value.trim(),a,b);
+      savePlace(nmI.value.trim(),a,b,null);
     }},'Guardar');
     res.append(h('p',{class:'tiny',style:'margin:8px 0'},'No trobo el lloc. Pots escriure les coordenades (a Google Maps, clic dret sobre el mapa):'),nmI,la,lo,sv);
   }
@@ -413,15 +480,15 @@ function placePicker(){
     searchCity(v).then(function(list){
       res.replaceChildren();
       if(!list.length){showManual();return;}
-      list.forEach(function(x){res.append(h('button',{class:'cityopt',type:'button',onclick:function(){savePlace(x.name,x.lat,x.lon);}},x.name));});
+      list.forEach(function(x){res.append(h('button',{class:'cityopt',type:'button',onclick:function(){savePlace(x.name,x.lat,x.lon,x.tz);}},x.name));});
     }).catch(function(){res.replaceChildren();res.append(h('p',{class:'tiny'},'No puc cercar ara.'));showManual();});
   }
   go.addEventListener('click',doSearch);
   q.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
   return h('div',null,h('div',{class:'row'},q,go),res);
 }
-function savePlace(name,lat,lon){
-  lAct(function(){return api.savePlace({player:S.who,name:name,lat:lat,lon:lon});},'Ubicació guardada').then(function(){S.editPlace=false;S.lsig='';renderLetters();});
+function savePlace(name,lat,lon,tz){
+  lAct(function(){return api.savePlace({player:S.who,name:name,lat:lat,lon:lon,tz:tz||null});},'Ubicació guardada').then(function(){S.editPlace=false;S.lsig='';renderLetters();});
 }
 function updateCta(){
   var b=$('btn-letter');if(!b)return;
@@ -453,21 +520,30 @@ function renderLetters(){
       var opts=TRANSPORTS.map(function(t){
         var m=etaMin(t,km);
         return h('button',{class:'tr',type:'button','data-k':t.k,'aria-pressed':String(S.ltr===t.k),onclick:function(ev){
-          S.ltr=t.k;Array.prototype.forEach.call(document.querySelectorAll('#letters .tr'),function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-k')===t.k));});
-          document.getElementById('lsend').textContent='Enviar carta amb '+t.n.toLowerCase();
-        }},icon(t),h('span',{class:'tn'},t.n),h('span',{class:'te'},fmtDur(m)),h('span',{class:'td'},t.d));
+          S.ltr=t.k;document.getElementById('lcap').hidden=!t.cap;Array.prototype.forEach.call(document.querySelectorAll('#letters .tr'),function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-k')===t.k));});
+          document.getElementById('lsend').textContent=t.cap?'Segellar la càpsula':'Enviar carta amb '+t.n.toLowerCase();
+        }},icon(t),h('span',{class:'tn'},t.n),h('span',{class:'te'},t.cap?'Tu tries el dia':fmtDur(m)),h('span',{class:'td'},t.d));
       });
       send.addEventListener('click',function(){
         var txt=ta.value.trim();
         if(txt.length<2){toast('Escriu la carta abans d\'enviar-la.');ta.focus();return;}
         if(!S.ltr){toast('Tria com viatjarà la carta.');return;}
-        var t=trOf(S.ltr),m=etaMin(t,km);
+        var t=trOf(S.ltr),m=etaMin(t,km),row={from_player:me,to_player:ot,transport:t.k,distance_km:Math.round(km),duration_min:m,body:txt},msg;
+        if(t.cap){
+          var v=(document.getElementById('lopen')||{}).value,od=v?new Date(v):null;
+          if(!od||isNaN(od.getTime())||od.getTime()<Date.now()+120000||od.getTime()>Date.now()+5*365*864e5){toast('Tria quan s\'obrirà (entre d\'aquí 2 minuts i 5 anys).');return;}
+          row.open_at=od.toISOString();row.distance_km=0;msg='Càpsula segellada. S\'obrirà '+fmtClock(od.getTime())+'.';
+        }else msg='Carta enviada. Arribarà '+fmtClock(Date.now()+m*60000)+'.';
         send.disabled=true;
-        lAct(function(){return api.sendLetter({from_player:me,to_player:ot,transport:t.k,distance_km:Math.round(km),duration_min:m,body:txt});},'Carta enviada. Arribarà '+fmtClock(Date.now()+m*60000)+'.')
+        lAct(function(){return api.sendLetter(row);},msg)
           .then(function(){ta.value='';send.disabled=false;});
       });
-      if(S.ltr)send.textContent='Enviar carta amb '+trOf(S.ltr).n.toLowerCase();
-      parts.push(h('span',{class:'lab'},'Nova carta'),ta,h('span',{class:'lab'},'Com viatjarà?'),h('div',{class:'trs'},opts),send);
+      if(S.ltr)send.textContent=trOf(S.ltr).cap?'Segellar la càpsula':'Enviar carta amb '+trOf(S.ltr).n.toLowerCase();
+      var cap=h('div',{id:'lcap',class:'lcap',hidden:S.ltr!=='capsula'},
+        h('label',{class:'lab',for:'lopen'},'Quan s\'ha d\'obrir?'),
+        h('input',{type:'datetime-local',id:'lopen',value:S.lopen||'',oninput:function(ev){S.lopen=ev.target.value;}}),
+        h('p',{class:'tiny',style:'margin:6px 0 0'},nm(ot)+' rebrà un avís quan s\'obri, però no podrà llegir-la abans.'));
+      parts.push(h('span',{class:'lab'},'Nova carta'),ta,h('span',{class:'lab'},'Com viatjarà?'),h('div',{class:'trs'},opts),cap,send);
     }
     parts.push(h('div',{id:'llists'}));
     z.replaceChildren(h('section',{class:'card'},h('h2',null,'Cartes'),parts));
@@ -486,6 +562,14 @@ function renderLetterLists(){
     transit.forEach(function(x){
       var t=trOf(x.transport),tot=Math.max(1,x.arrive-x.sent),pct=Math.min(100,Math.max(2,(now-x.sent)/tot*100));
       var mineL=x.from_player===me;
+      if(isCap(x)){
+        out.push(h('div',{class:'lt'},h('div',{class:'lth'},icon(t),h('div',null,
+          h('div',{class:'ltt'},mineL?'Càpsula del temps per a '+nm(x.to_player):'Càpsula del temps de '+nm(x.from_player)),
+          h('div',{class:'tiny'},'Es podrà obrir d\'aquí '+fmtDur((x.arrive-now)/60000)+' ('+fmtClock(x.arrive)+')'))),
+          h('div',{class:'prog'},h('i',{style:'width:'+pct+'%'})),
+          mineL?h('div',{class:'lbody'},x.body):null));
+        return;
+      }
       out.push(h('div',{class:'lt'},
         h('div',{class:'lth'},icon(t),h('div',null,
           h('div',{class:'ltt'},mineL?'Per a '+nm(x.to_player)+' · '+t.n.toLowerCase():'De '+nm(x.from_player)+' · '+t.n.toLowerCase()),
@@ -500,21 +584,21 @@ function renderLetterLists(){
       var t=trOf(x.transport),mineL=x.from_player===me,t0=h('div',{class:'ltt'});
       if(mineL){
         out.push(h('div',{class:'lt'},h('div',{class:'lth'},icon(t),h('div',null,
-          h('div',{class:'ltt'},'Enviada a '+nm(x.to_player)+' · '+t.n.toLowerCase()),
-          h('div',{class:'tiny'},'Va arribar '+fmtClock(x.arrive)+(x.read?' · llegida':' · encara sense llegir')))),
+          h('div',{class:'ltt'},isCap(x)?'Càpsula per a '+nm(x.to_player):'Enviada a '+nm(x.to_player)+' · '+t.n.toLowerCase()),
+          h('div',{class:'tiny'},(isCap(x)?'Es va obrir ':'Va arribar ')+fmtClock(x.arrive)+(x.read?' · llegida':' · encara sense llegir')))),
           h('div',{class:'lbody'},x.body)));
       }else if(!x.read&&S.openL!==x.id){
         out.push(h('div',{class:'lt new'},h('div',{class:'lth'},icon(t),h('div',null,
-          h('div',{class:'ltt'},'Ha arribat una carta de '+nm(x.from_player)),
-          h('div',{class:'tiny'},'Ha viatjat en '+t.n.toLowerCase()+' (' +fmtKm(x.distance_km)+')'))),
+          h('div',{class:'ltt'},isCap(x)?'S\'ha obert una càpsula del temps de '+nm(x.from_player):'Ha arribat una carta de '+nm(x.from_player)),
+          h('div',{class:'tiny'},isCap(x)?'Segellada '+fmtClock(x.sent):'Ha viatjat en '+t.n.toLowerCase()+' (' +fmtKm(x.distance_km)+')'))),
           h('button',{class:'btn sm '+me,type:'button',onclick:function(){
             S.openL=x.id;renderLetterLists();
             lAct(function(){return api.readLetter(x.id);});
-          }},'Obrir carta')));
+          }},isCap(x)?'Obrir càpsula':'Obrir carta')));
       }else{
         out.push(h('div',{class:'lt'},h('div',{class:'lth'},icon(t),h('div',null,
-          h('div',{class:'ltt'},'De '+nm(x.from_player)+' · '+t.n.toLowerCase()),
-          h('div',{class:'tiny'},'Va arribar '+fmtClock(x.arrive)))),
+          h('div',{class:'ltt'},isCap(x)?'Càpsula de '+nm(x.from_player):'De '+nm(x.from_player)+' · '+t.n.toLowerCase()),
+          h('div',{class:'tiny'},(isCap(x)?'Es va obrir ':'Va arribar ')+fmtClock(x.arrive)))),
           h('div',{class:'lbody'},x.body)));
       }
     });
@@ -834,7 +918,7 @@ function renderAll(){
   $('btn-out').hidden=!S.authed;
   $('btn-colors').hidden=!(S.authed&&ready()&&S.who);
   $('btn-push').hidden=!(S.authed&&ready()&&S.who&&cfg.vapid);
-  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderGames();renderHugs();renderLetters();renderAdd();renderRewards();renderWall();
+  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderGames();renderHugs();renderLetters();renderAdd();renderRewards();renderWall();
 }
 
 /* challenge slot lives above the form */
@@ -860,7 +944,10 @@ var api={
   addMoment:function(m){return sb.from('pp_moments').insert(m).then(chk).then(loadAll);},
   savePref:function(r){return sb.from('pp_prefs').upsert(r).then(chk).then(loadAll);},
   delPref:function(p){return sb.from('pp_prefs').delete().eq('player',p).then(chk).then(loadAll);},
-  savePlace:function(r){return sb.from('pp_places').upsert(r).then(chk).then(loadAll);},
+  savePlace:function(r){return sb.from('pp_places').upsert(r).then(function(x){
+    if(x.error&&/tz/i.test(x.error.message||'')){var r2=Object.assign({},r);delete r2.tz;return sb.from('pp_places').upsert(r2);}
+    return x;}).then(chk).then(loadAll);},
+  saveMeet:function(v){return sb.from('pp_extra').upsert({id:1,meet_date:v,ts:new Date().toISOString()}).then(chk).then(loadAll);},
   sendLetter:function(r){return sb.from('pp_letters').insert(r).then(chk).then(loadAll);},
   readLetter:function(id){return sb.from('pp_letters').update({read_at:new Date().toISOString()}).eq('id',id).is('read_at',null).then(chk).then(loadAll);},
   giveHug:function(){var n=new Date();return sb.from('pp_hugs').insert({kind:'give',from_player:S.who,status:'done',day:dayKey(n)}).then(chk).then(loadAll);},
@@ -899,7 +986,8 @@ function loadAll(){
     sb.from('pp_prefs').select('*'),
     sb.from('pp_hugs').select('*').order('ts',{ascending:false}).limit(500),
     sb.from('pp_places').select('*'),
-    sb.from('pp_letters').select('*').order('sent_at',{ascending:false}).limit(300)
+    sb.from('pp_letters').select('*').order('sent_at',{ascending:false}).limit(300),
+    sb.from('pp_extra').select('*').eq('id',1).maybeSingle()
   ]).then(function(rs){
     var c=rs[0].data;
     var fx=cfg.names;
@@ -911,12 +999,13 @@ function loadAll(){
     S.answers=(rs[3].data||[]).map(function(x){return {day:x.day,game:x.game,slot:x.slot,player:x.player,answer:x.answer,prompt:x.prompt};});
     S.colors={a:null,b:null};(rs[4].data||[]).forEach(function(x){if(x.player==='a'||x.player==='b')S.colors[x.player]=x.color;});applyColors();
     S.hugs=(rs[5].data||[]).map(function(x){return {id:x.id,kind:x.kind,from_player:x.from_player,status:x.status,day:x.day,ret_day:x.ret_day,ts:new Date(x.ts).getTime()};});
-    S.places={a:null,b:null};(rs[6].data||[]).forEach(function(x){if(x.player==='a'||x.player==='b')S.places[x.player]={name:x.name,lat:x.lat,lon:x.lon};});
+    S.places={a:null,b:null};(rs[6].data||[]).forEach(function(x){if(x.player==='a'||x.player==='b')S.places[x.player]={name:x.name,lat:x.lat,lon:x.lon,tz:x.tz||null};});
+    S.meet=(rs[8]&&rs[8].data&&rs[8].data.meet_date)||null;backfillTz();
     S.letters=(rs[7].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,to_player:x.to_player,transport:x.transport,distance_km:x.distance_km,body:x.body,sent:new Date(x.sent_at).getTime(),arrive:new Date(x.arrive_at).getTime(),read:!!x.read_at};});
     S.ai={};S.answers.forEach(function(a){S.ai[a.day+'|'+a.game+'|'+a.slot+'|'+a.player]=a;});
     if(S.editNames||document.activeElement&&(document.activeElement.id==='phrase'||document.activeElement.id==='qans')){
       renderBoard();renderChallengeCard();renderRewards();renderWall();
-      if(!S.editNames){renderGames();renderHugs();renderLetters();renderAdd();}
+      if(!S.editNames){renderMeet();renderGames();renderHugs();renderLetters();renderAdd();}
     }else renderAll();
   }).catch(function(){toast('No he pogut carregar el marcador.');});
 }
