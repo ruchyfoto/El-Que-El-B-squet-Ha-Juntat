@@ -272,3 +272,24 @@ select{width:100%;font:inherit;color:var(--fg);background:var(--soft);border:1.5
 .kdots{display:inline-flex;gap:4px}
 .kdot{color:var(--line);font-size:18px;line-height:1}
 .kdot.on{color:var(--a)}
+
+/* sorpresa: pluja de cors */
+body.nosc{overflow:hidden}
+.sur{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px;
+  background:radial-gradient(ellipse at 50% 40%,#7a1f44 0%,#4a1630 55%,#25091a 100%);color:#fff;animation:sfade .8s ease both}
+@keyframes sfade{from{opacity:0}to{opacity:1}}
+.srain{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.hrt{position:absolute;top:-8vh;line-height:1;animation:hfall linear infinite;will-change:transform}
+@keyframes hfall{0%{transform:translate3d(0,-10vh,0) rotate(-12deg)}50%{transform:translate3d(18px,55vh,0) rotate(14deg)}100%{transform:translate3d(-12px,112vh,0) rotate(-10deg)}}
+.sbox{position:relative;text-align:center;max-width:680px;display:flex;flex-direction:column;align-items:center;gap:14px}
+.sfrom{font-size:15px;letter-spacing:.08em;text-transform:uppercase;opacity:.8;animation:srise 1s .5s ease both}
+.smsg{font:italic 700 clamp(56px,20vw,132px)/1 var(--display);color:#fff;text-shadow:0 0 28px rgba(255,120,160,.9),0 0 60px rgba(255,80,130,.6);overflow-wrap:anywhere;animation:spop 1.2s .3s cubic-bezier(.2,1.4,.4,1) both,sbeat 1.8s 1.6s ease-in-out infinite}
+.smsg.sm{font-size:clamp(40px,13vw,84px)}
+.smsg.xs{font-size:clamp(28px,8vw,52px)}
+.sbig{font-size:64px;color:#ff6b8b;line-height:1;animation:sbeat 1.4s ease-in-out infinite}
+.sbtn{margin-top:10px;border:1.5px solid rgba(255,255,255,.7);background:rgba(255,255,255,.12);color:#fff;border-radius:999px;padding:12px 26px;font-weight:700;font-size:16px;animation:srise 1s 1.2s ease both}
+.sbtn:hover{background:rgba(255,255,255,.22)}
+@keyframes spop{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:scale(1)}}
+@keyframes sbeat{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+@keyframes srise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.hrt{animation:none;top:auto}.hrt:nth-child(3n){top:15%}.hrt:nth-child(3n+1){top:45%}.hrt:nth-child(3n+2){top:75%}.smsg,.sbig{animation:none}}

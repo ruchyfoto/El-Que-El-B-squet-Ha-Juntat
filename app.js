@@ -90,7 +90,7 @@ var T=[
 var QPTS=2,TPTS=1;
 
 
-var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},hugs:[],kisses:[],places:{a:null,b:null},letters:[],offers:[],redeems:[],c4:[],chat:[],chatOpen:false,dates:[],calSel:null,calMonth:null,dateForm:null,ltr:null,openL:null,editPlace:false,lsig:'',colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
+var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},hugs:[],kisses:[],surprises:[],places:{a:null,b:null},letters:[],offers:[],redeems:[],c4:[],chat:[],chatOpen:false,dates:[],calSel:null,calMonth:null,dateForm:null,ltr:null,openL:null,editPlace:false,lsig:'',colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
 try{S.who=localStorage.getItem('who')||null;}catch(e){}
 
 function h(tag,props){
@@ -271,6 +271,65 @@ function renderHugs(){
   });
   if(rows.length)parts.push(h('div',{class:'hugs'},rows));
   z.replaceChildren(h('section',{class:'card'},h('h2',null,'Abraçades'),parts));
+}
+
+/* ---------- sorpreses: pluja de cors ---------- */
+var HEARTCOL=['#ff6b8b','#ff9eb5','#f4c98b','#ffffff','#e23e6b','#ffc1d0'];
+function surpriseOverlay(from,msg,onClose){
+  var old=document.getElementById('surprise');if(old)old.remove();
+  var rain=h('div',{class:'srain','aria-hidden':'true'}),i;
+  for(i=0;i<64;i++){
+    var s=document.createElement('span');s.className='hrt';s.textContent='♥';
+    s.style.left=(Math.random()*100).toFixed(1)+'%';
+    s.style.fontSize=(14+Math.random()*34).toFixed(0)+'px';
+    s.style.color=HEARTCOL[i%HEARTCOL.length];
+    s.style.animationDuration=(4.5+Math.random()*5).toFixed(1)+'s';
+    s.style.animationDelay=(-Math.random()*9).toFixed(1)+'s';
+    s.style.opacity=(0.55+Math.random()*0.45).toFixed(2);
+    rain.append(s);
+  }
+  var len=msg.length,cls=len>28?' xs':(len>14?' sm':'');
+  var btn=h('button',{class:'sbtn',type:'button',onclick:function(){ov.remove();document.body.classList.remove('nosc');if(onClose)onClose();}},'♥ Tancar');
+  var ov=h('div',{id:'surprise',class:'sur',role:'dialog','aria-modal':'true','aria-label':'Una sorpresa per a tu'},
+    rain,
+    h('div',{class:'sbox'},
+      h('div',{class:'sfrom'},from?'Una sorpresa de '+from:'Una sorpresa'),
+      h('div',{class:'smsg'+cls},msg),
+      h('div',{class:'sbig','aria-hidden':'true'},'♥'),
+      btn));
+  document.body.classList.add('nosc');
+  document.body.append(ov);
+  setTimeout(function(){try{btn.focus({preventScroll:true});}catch(e){}},50);
+}
+function checkSurprise(){
+  if(!S.authed||!ready()||!S.who||document.hidden)return;
+  var me=S.who,list=S.surprises.filter(function(x){return x.to_player===me&&!x.seen;}).sort(function(a,b){return a.ts-b.ts;});
+  var x=list[0];
+  if(!x||S.surShown===x.id||document.getElementById('surprise'))return;
+  S.surShown=x.id;
+  surpriseOverlay(nm(x.from_player),x.message,function(){api.seeSurprise(x.id).catch(function(){});});
+}
+document.addEventListener('visibilitychange',function(){if(!document.hidden)checkSurprise();});
+function renderSurpriseCard(){
+  var z=$('surp');if(!z)return;
+  if(!ready()||!S.who){z.replaceChildren();return;}
+  var ae=document.activeElement;if(z.firstChild&&ae&&ae.id==='surmsg')return;
+  var me=S.who,ot=other(me),prev=document.getElementById('surmsg'),keep=prev?prev.value:'T’estimo';
+  var pend=S.surprises.filter(function(x){return x.from_player===me&&!x.seen;});
+  var inp=h('input',{type:'text',id:'surmsg',maxlength:'80',value:keep,'aria-label':'Missatge de la sorpresa'});
+  var parts=[
+    h('p',{class:'tiny',style:'margin:0 0 10px'},'Una pluja de cors amb el missatge que triïs. A '+nm(ot)+' li sortirà la propera vegada que obri l’aplicació, sense cap avís previ perquè sigui sorpresa.'),
+    inp,
+    h('div',{class:'row',style:'margin-top:10px'},
+      h('button',{class:'btn sm '+me,type:'button',style:'flex:1',onclick:function(){
+        var m=inp.value.trim();if(!m){toast('Escriu el missatge.');return;}
+        lAct(function(){return api.sendSurprise({from_player:me,to_player:ot,message:m});},'Sorpresa enviada. La veurà quan obri l’aplicació.');
+      }},'Enviar la sorpresa'),
+      h('button',{class:'btn sm',type:'button',style:'flex:none;background:var(--soft);color:var(--fg)',onclick:function(){
+        surpriseOverlay(nm(me),inp.value.trim()||'T’estimo',null);
+      }},'Veure com queda'))];
+  if(pend.length)parts.push(h('p',{class:'tiny',style:'margin:10px 0 0'},pend.length===1?'Hi ha 1 sorpresa esperant que '+nm(ot)+' obri l’aplicació.':'Hi ha '+pend.length+' sorpreses esperant que '+nm(ot)+' obri l’aplicació.'));
+  z.replaceChildren(h('section',{class:'card'},h('h2',null,'Sorpresa'),parts));
 }
 
 /* ---------- petons (màxim 3 al dia per persona) ---------- */
@@ -1295,7 +1354,7 @@ function renderAll(){
   $('btn-out').hidden=!S.authed;
   $('btn-colors').hidden=!(S.authed&&ready()&&S.who);
   $('btn-push').hidden=!(S.authed&&ready()&&S.who&&cfg.vapid);
-  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderChat();renderCal();renderGames();renderC4();renderHugs();renderKisses();renderShop();renderLetters();renderAdd();renderRewards();renderWall();
+  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderChat();renderCal();renderGames();renderC4();renderHugs();renderKisses();renderSurpriseCard();checkSurprise();renderShop();renderLetters();renderAdd();renderRewards();renderWall();
 }
 
 /* challenge slot lives above the form */
@@ -1337,6 +1396,8 @@ var api={
   moveC4:function(id,me,patch){return sb.from('pp_c4').update(patch).eq('id',id).eq('status','playing').eq('turn',me).then(chk).then(loadAll);},
   sendLetter:function(r){return sb.from('pp_letters').insert(r).then(chk).then(loadAll);},
   readLetter:function(id){return sb.from('pp_letters').update({read_at:new Date().toISOString()}).eq('id',id).is('read_at',null).then(chk).then(loadAll);},
+  sendSurprise:function(r){return sb.from('pp_surprises').insert(r).then(chk).then(loadAll);},
+  seeSurprise:function(id){return sb.from('pp_surprises').update({seen_at:new Date().toISOString()}).eq('id',id).is('seen_at',null).then(chk).then(loadAll);},
   giveKiss:function(){var n=new Date();return sb.from('pp_kisses').insert({kind:'give',from_player:S.who,status:'done',day:dayKey(n)}).then(chk).then(loadAll);},
   askKiss:function(){var n=new Date();return sb.from('pp_kisses').insert({kind:'ask',from_player:S.who,status:'pending',day:dayKey(n)}).then(chk).then(loadAll);},
   returnKiss:function(id){var n=new Date();return sb.from('pp_kisses').update({status:'returned',ret_day:dayKey(n),ret_ts:n.toISOString()}).eq('id',id).eq('status','pending').then(chk).then(loadAll);},
@@ -1384,7 +1445,8 @@ function loadAll(){
     sb.from('pp_c4').select('*').order('ts',{ascending:false}).limit(200),
     sb.from('pp_chat').select('*').order('ts',{ascending:false}).limit(200),
     sb.from('pp_dates').select('*'),
-    sb.from('pp_kisses').select('*').order('ts',{ascending:false}).limit(500)
+    sb.from('pp_kisses').select('*').order('ts',{ascending:false}).limit(500),
+    sb.from('pp_surprises').select('*').order('ts',{ascending:false}).limit(100)
   ]).then(function(rs){
     var c=rs[0].data;
     var fx=cfg.names;
@@ -1402,13 +1464,14 @@ function loadAll(){
     S.redeems=(rs[10]&&rs[10].data||[]).map(function(x){return {id:x.id,offerer:x.offerer,buyer:x.buyer,title:x.title,cost:+x.cost,status:x.status,ts:new Date(x.ts).getTime()};});
     S.dates=(rs[13]&&rs[13].data||[]).map(function(x){var p=x.since?/^(\d{4})-(\d{2})-(\d{2})/.exec(x.since):null;return {id:x.id,title:x.title,repeat:x.repeat,month:x.month,day:+x.day,since:p?{y:+p[1],m:+p[2],d:+p[3]}:null};});
     S.kisses=(rs[14]&&rs[14].data||[]).map(function(x){return {id:x.id,kind:x.kind,from_player:x.from_player,status:x.status,day:x.day,ret_day:x.ret_day,ts:new Date(x.ts).getTime()};});
+    S.surprises=(rs[15]&&rs[15].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,to_player:x.to_player,message:x.message,ts:new Date(x.ts).getTime(),seen:!!x.seen_at};});
     S.chat=(rs[12]&&rs[12].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,body:x.body,ts:new Date(x.ts).getTime(),read:!!x.read_at};}).reverse();
     S.c4=(rs[11]&&rs[11].data||[]).map(function(x){return {id:x.id,starter:x.starter,board:x.board,turn:x.turn,status:x.status,winner:x.winner,last_by:x.last_by,moves:+x.moves,ts:new Date(x.ts).getTime()};});
     S.letters=(rs[7].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,to_player:x.to_player,transport:x.transport,distance_km:x.distance_km,body:x.body,sent:new Date(x.sent_at).getTime(),arrive:new Date(x.arrive_at).getTime(),read:!!x.read_at};});
     S.ai={};S.answers.forEach(function(a){S.ai[a.day+'|'+a.game+'|'+a.slot+'|'+a.player]=a;});
     if(S.editNames||document.activeElement&&(document.activeElement.id==='phrase'||document.activeElement.id==='qans')){
       renderBoard();renderChallengeCard();renderRewards();renderWall();
-      if(!S.editNames){renderMeet();renderChat();renderCal();renderC4();renderShop();renderGames();renderHugs();renderKisses();renderLetters();renderAdd();}
+      if(!S.editNames){renderMeet();renderChat();renderCal();renderC4();renderShop();renderGames();renderHugs();renderKisses();renderSurpriseCard();checkSurprise();renderLetters();renderAdd();}
     }else renderAll();
   }).catch(function(){toast('No he pogut carregar el marcador.');});
 }
