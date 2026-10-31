@@ -390,7 +390,8 @@ function ymd(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate
 function meetInfo(){
   var n=new Date(),today=new Date(n.getFullYear(),n.getMonth(),n.getDate()),d=parseDay(S.meet),exact=true;
   if(!d||d<today){d=nextAug1();exact=false;}
-  return {d:d,days:Math.round((d-today)/864e5),exact:exact};
+  var ls=parseDay(S.lastSeen),since=(ls&&ls<=today)?Math.round((today-ls)/864e5):null,until=Math.round((d-today)/864e5);
+  return {d:d,days:until,exact:exact,ls:ls,since:since,pct:(since!=null&&since+until>0)?Math.max(0,Math.min(100,since/(since+until)*100)):null};
 }
 function backfillTz(){
   var m=S.who&&S.places&&S.places[S.who];
@@ -411,18 +412,32 @@ function renderMeet(){
   var big=mi.days===0?h('div',{class:'mbig'},'Avui us veieu ',h('span',{class:'heart'},'♥')):
     h('div',{class:'mrow'},h('span',{class:'mnum'},String(mi.days)),h('span',{class:'mlab'},(mi.days===1?'dia':'dies')+' per veure’ns'));
   parts.push(big,h('div',{class:'tiny'},(mi.exact?'':'Data orientativa: ')+dtxt));
+  if(mi.since!=null){
+    var lsTxt=mi.ls.toLocaleDateString('ca',{day:'numeric',month:'long'});
+    parts.push(h('div',{class:'msince'},
+      mi.since===0?h('span',{class:'msl'},'Avui us heu vist \u2665'):h('span',{class:'msn'},String(mi.since)),
+      mi.since===0?null:h('span',{class:'msl'},(mi.since===1?'dia':'dies')+' sense veure\u2019ns \u00b7 des del '+lsTxt)),
+      mi.pct!=null?h('div',{class:'mbar',role:'img','aria-label':'Heu fet el '+Math.round(mi.pct)+' % del camí fins a la retrobada'},h('i',{style:'width:'+mi.pct.toFixed(1)+'%'}),h('b',{style:'left:'+mi.pct.toFixed(1)+'%'},'\u2665')):null);
+  }
   if(S.meetEdit){
     var inp=h('input',{type:'date',id:'meetd',value:mi.exact?ymd(mi.d):''});
-    parts.push(h('div',{class:'row',style:'margin-top:10px'},inp,
-      h('button',{class:'btn sm '+me,type:'button',onclick:function(){
-        var v=inp.value;if(!parseDay(v)){toast('Tria una data.');return;}
-        lAct(function(){return api.saveMeet(v);},'Data guardada').then(function(){S.meetEdit=false;z.replaceChildren();renderMeet();});
-      }},'Guardar')),
+    var inl=h('input',{type:'date',id:'lastd',value:mi.ls?ymd(mi.ls):''});
+    function closeEdit(){S.meetEdit=false;z.replaceChildren();renderMeet();}
+    parts.push(h('label',{class:'lab',for:'meetd'},'Quan us veureu (si ho sabeu)'),inp,
+      h('label',{class:'lab',for:'lastd'},'L\u00faltima vegada que us vau veure'),inl,
+      h('div',{class:'row',style:'margin-top:12px'},
+        h('button',{class:'btn sm '+me,type:'button',style:'flex:1',onclick:function(){
+          var o={},md=parseDay(inp.value),ld=parseDay(inl.value);
+          if(md)o.meet_date=ymd(md);
+          if(ld)o.last_seen=ymd(ld);
+          if(!md&&!ld){toast('Tria alguna data.');return;}
+          lAct(function(){return api.saveExtra(o);},'Dates guardades').then(closeEdit);
+        }},'Guardar')),
       h('div',{class:'row',style:'margin-top:8px;gap:14px'},
-        h('button',{class:'link',type:'button',onclick:function(){lAct(function(){return api.saveMeet(null);},'Tornem a l’1 d’agost').then(function(){S.meetEdit=false;z.replaceChildren();renderMeet();});}},'Encara no sabem el dia'),
-        h('button',{class:'link',type:'button',onclick:function(){S.meetEdit=false;z.replaceChildren();renderMeet();}},'Cancel·lar')));
+        h('button',{class:'link',type:'button',onclick:function(){lAct(function(){return api.saveExtra({meet_date:null});},'Tornem a l\u20191 d\u2019agost').then(closeEdit);}},'Encara no sabem el dia de la retrobada'),
+        h('button',{class:'link',type:'button',onclick:closeEdit},'Cancel\u00b7lar')));
   }else{
-    parts.push(h('button',{class:'link',type:'button',onclick:function(){S.meetEdit=true;z.replaceChildren();renderMeet();}},'Canviar la data'));
+    parts.push(h('button',{class:'link',type:'button',onclick:function(){S.meetEdit=true;z.replaceChildren();renderMeet();}},'Canviar les dates'));
   }
   var pl=S.places&&S.places[ot];
   if(pl){
@@ -1384,6 +1399,7 @@ var api={
     if(x.error&&/tz/i.test(x.error.message||'')){var r2=Object.assign({},r);delete r2.tz;return sb.from('pp_places').upsert(r2);}
     return x;}).then(chk).then(loadAll);},
   saveMeet:function(v){return sb.from('pp_extra').upsert({id:1,meet_date:v,ts:new Date().toISOString()}).then(chk).then(loadAll);},
+  saveExtra:function(o){return sb.from('pp_extra').upsert(Object.assign({id:1,ts:new Date().toISOString()},o)).then(chk).then(loadAll);},
   saveDate:function(r){var q=r.id?sb.from('pp_dates').update(r).eq('id',r.id):sb.from('pp_dates').insert(r);return q.then(chk).then(loadAll);},
   delDate:function(id){return sb.from('pp_dates').delete().eq('id',id).then(chk).then(loadAll);},
   sendChat:function(r){return sb.from('pp_chat').insert(r).then(chk).then(loadAll);},
@@ -1410,6 +1426,7 @@ var api={
 };
 function saveErr(e){
   var m=String(e&&e.message||e||'');
+  if(/last_seen/i.test(m))return 'Falta executar supabase_ultimavegada.sql a Supabase.';
   if(/petons al dia/i.test(m))return 'Ja has fet els '+KISSMAX+' petons d\'avui. Demà més!';
   if(/row-level security|permission|policy/i.test(m))return 'No tens permís: el teu correu no és a pp_allowed (o falta executar supabase.sql).';
   if(/does not exist|schema cache|relation|Could not find/i.test(m))return 'Falta una taula a Supabase: executa supabase.sql i supabase_jocs.sql.';
@@ -1459,7 +1476,7 @@ function loadAll(){
     S.colors={a:null,b:null};(rs[4].data||[]).forEach(function(x){if(x.player==='a'||x.player==='b')S.colors[x.player]=x.color;});applyColors();
     S.hugs=(rs[5].data||[]).map(function(x){return {id:x.id,kind:x.kind,from_player:x.from_player,status:x.status,day:x.day,ret_day:x.ret_day,ts:new Date(x.ts).getTime()};});
     S.places={a:null,b:null};(rs[6].data||[]).forEach(function(x){if(x.player==='a'||x.player==='b')S.places[x.player]={name:x.name,lat:x.lat,lon:x.lon,tz:x.tz||null};});
-    S.meet=(rs[8]&&rs[8].data&&rs[8].data.meet_date)||null;backfillTz();
+    S.meet=(rs[8]&&rs[8].data&&rs[8].data.meet_date)||null;S.lastSeen=(rs[8]&&rs[8].data&&rs[8].data.last_seen)||null;backfillTz();
     S.offers=(rs[9]&&rs[9].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,title:x.title,cost:+x.cost};});
     S.redeems=(rs[10]&&rs[10].data||[]).map(function(x){return {id:x.id,offerer:x.offerer,buyer:x.buyer,title:x.title,cost:+x.cost,status:x.status,ts:new Date(x.ts).getTime()};});
     S.dates=(rs[13]&&rs[13].data||[]).map(function(x){var p=x.since?/^(\d{4})-(\d{2})-(\d{2})/.exec(x.since):null;return {id:x.id,title:x.title,repeat:x.repeat,month:x.month,day:+x.day,since:p?{y:+p[1],m:+p[2],d:+p[3]}:null};});

@@ -293,3 +293,11 @@ body.nosc{overflow:hidden}
 @keyframes sbeat{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
 @keyframes srise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.hrt{animation:none;top:auto}.hrt:nth-child(3n){top:15%}.hrt:nth-child(3n+1){top:45%}.hrt:nth-child(3n+2){top:75%}.smsg,.sbig{animation:none}}
+
+/* dies sense veure's */
+.msince{display:flex;align-items:baseline;gap:8px;margin-top:12px;flex-wrap:wrap}
+.msn{font:italic 700 28px/1 var(--display);color:var(--b);font-variant-numeric:lining-nums}
+.msl{font-size:13px;color:var(--muted)}
+.mbar{position:relative;height:6px;border-radius:3px;background:var(--line);margin:12px 8px 6px 0}
+.mbar i{display:block;height:100%;border-radius:3px;background:linear-gradient(90deg,var(--b),var(--a))}
+.mbar b{position:absolute;top:50%;transform:translate(-50%,-52%);font-size:14px;line-height:1;color:var(--a);font-weight:400}
