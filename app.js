@@ -393,6 +393,67 @@ function meetInfo(){
   var ls=parseDay(S.lastSeen),since=(ls&&ls<=today)?Math.round((today-ls)/864e5):null,until=Math.round((d-today)/864e5);
   return {d:d,days:until,exact:exact,ls:ls,since:since,pct:(since!=null&&since+until>0)?Math.max(0,Math.min(100,since/(since+until)*100)):null};
 }
+
+/* vistes del temps que queda */
+var MVIEWS=[['dies','Dies'],['setmanes','Setmanes'],['mesos','Mesos'],['live','En directe'],['caps','Caps de setmana'],['llunes','Llunes plenes'],['peli','Pel·lícules'],['partits','Partits'],['cami','Pel camí']];
+function getMV(){
+  if(S.meetView)return S.meetView;
+  var v=null;try{v=localStorage.getItem('meetview');}catch(e){}
+  S.meetView=MVIEWS.some(function(x){return x[0]===v;})?v:'dies';
+  return S.meetView;
+}
+function setMV(v){S.meetView=v;try{localStorage.setItem('meetview',v);}catch(e){}}
+function fmtN(n){return Math.round(n).toLocaleString('ca');}
+function liveTxt(d){
+  var s=Math.max(0,Math.floor((d.getTime()-Date.now())/1000)),dd=Math.floor(s/86400),hh,mm;
+  s%=86400;hh=Math.floor(s/3600);s%=3600;mm=Math.floor(s/60);s%=60;
+  return dd+' d '+pad(hh)+' h '+pad(mm)+' min '+pad(s)+' s';
+}
+function monthsDiff(a,b){
+  var m=(b.getFullYear()-a.getFullYear())*12+b.getMonth()-a.getMonth(),t=new Date(a.getFullYear(),a.getMonth()+m,a.getDate());
+  if(t>b){m--;t=new Date(a.getFullYear(),a.getMonth()+m,a.getDate());}
+  return {m:m,d:Math.round((b-t)/864e5)};
+}
+function weekendsBetween(a,b){var n=0,d=new Date(a);for(;d<b;d.setDate(d.getDate()+1))if(d.getDay()===6)n++;return n;}
+function fullMoons(from,to){
+  var E=Date.UTC(2000,0,6,18,14),L=29.530588853*864e5,k=Math.ceil((from.getTime()-E)/L-0.5),n=0,tt;
+  for(;;k++){tt=E+(k+0.5)*L;if(tt>to.getTime())break;if(tt>from.getTime())n++;}
+  return n;
+}
+function pathEvents(today,until){
+  var m={},order=[],d=new Date(today.getFullYear(),today.getMonth(),today.getDate()+1);
+  for(;d<until;d.setDate(d.getDate()+1)){
+    S.dates.forEach(function(ev){
+      if(occursOn(ev,d.getFullYear(),d.getMonth()+1,d.getDate())){
+        if(!m[ev.title]){m[ev.title]={n:0,first:new Date(d)};order.push(ev.title);}
+        m[ev.title].n++;
+      }
+    });
+  }
+  return order.map(function(x){return {t:x,n:m[x].n,first:m[x].first};}).sort(function(a,b){return a.first-b.first;});
+}
+/* retorna {num,lab,extra,live} segons la vista triada */
+function meetBig(mi){
+  var v=getMV(),n=new Date(),today=new Date(n.getFullYear(),n.getMonth(),n.getDate()),days=mi.days,ms=mi.d.getTime()-n.getTime();
+  var dies={num:fmtN(days),lab:(days===1?'dia':'dies')+' per veure’ns'};
+  if(v==='setmanes'){var w=Math.floor(days/7),r=days%7;if(w<1)return dies;return {num:fmtN(w),lab:(w===1?'setmana':'setmanes')+(r?' i '+r+(r===1?' dia':' dies'):'')+' per veure’ns'};}
+  if(v==='mesos'){var md=monthsDiff(today,mi.d);if(md.m<1)return dies;return {num:String(md.m),lab:(md.m===1?'mes':'mesos')+(md.d?' i '+md.d+(md.d===1?' dia':' dies'):'')+' per veure’ns'};}
+  if(v==='live')return {live:true,txt:liveTxt(mi.d),lab:'exactes per veure’ns (fins a les 00:00 del dia)'};
+  if(v==='caps'){var c=weekendsBetween(today,mi.d);return {num:String(c),lab:(c===1?'cap de setmana':'caps de setmana')+' per veure’ns'};}
+  if(v==='llunes'){var l=fullMoons(n,mi.d);return {num:String(l),lab:(l===1?'lluna plena':'llunes plenes')+' pel camí (aprox.)',extra:'Sempre és la mateixa lluna per als dos, vagis on vagis.'};}
+  if(v==='peli'){return {num:fmtN(ms/36e5/2),lab:'pel·lícules de 2 hores per veure’ns'};}
+  if(v==='partits'){return {num:fmtN(ms/6e4/40),lab:'partits de bàsquet de 40 minuts'};}
+  if(v==='cami'){
+    var ev=pathEvents(today,mi.d),tot=ev.reduce(function(s,x){return s+x.n;},0);
+    return {num:String(tot),lab:(tot===1?'data assenyalada':'dates assenyalades')+' pel camí',path:ev.slice(0,8)};
+  }
+  return dies;
+}
+setInterval(function(){
+  var el=document.getElementById('mlive');
+  if(el&&S.authed){var mi=meetInfo();el.textContent=liveTxt(mi.d);}
+},1000);
+
 function backfillTz(){
   var m=S.who&&S.places&&S.places[S.who];
   if(!m||m.tz||S.tzTry===S.who+'|'+m.name)return;
@@ -409,9 +470,17 @@ function renderMeet(){
   if(S.meetEdit&&z.firstChild)return;
   var me=S.who,ot=other(me),mi=meetInfo(),parts=[];
   var dtxt=mi.d.toLocaleDateString('ca',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  var big=mi.days===0?h('div',{class:'mbig'},'Avui us veieu ',h('span',{class:'heart'},'♥')):
-    h('div',{class:'mrow'},h('span',{class:'mnum'},String(mi.days)),h('span',{class:'mlab'},(mi.days===1?'dia':'dies')+' per veure’ns'));
+  var mb=meetBig(mi),big;
+  if(mi.days===0)big=h('div',{class:'mbig'},'Avui us veieu ',h('span',{class:'heart'},'\u2665'));
+  else if(mb.live)big=h('div',null,h('div',{class:'mlive',id:'mlive'},mb.txt),h('div',{class:'mlab'},mb.lab));
+  else big=h('div',null,h('div',{class:'mrow'},h('span',{class:'mnum'},mb.num),h('span',{class:'mlab'},mb.lab)),
+    mb.extra?h('div',{class:'tiny',style:'margin-top:4px'},mb.extra):null,
+    mb.path?h('div',{class:'mpath'},mb.path.map(function(x){return h('span',{class:'mpi'},x.t+(x.n>1?' \u00d7'+x.n:'')+' \u00b7 '+x.first.toLocaleDateString('ca',{day:'numeric',month:'short'}));})):null);
   parts.push(big,h('div',{class:'tiny'},(mi.exact?'':'Data orientativa: ')+dtxt));
+  var cur=getMV();
+  parts.push(h('div',{class:'mviews',role:'group','aria-label':'Com vols veure el temps que queda'},MVIEWS.map(function(x){
+    return h('button',{class:'mv',type:'button','aria-pressed':String(cur===x[0]),onclick:function(){setMV(x[0]);z.replaceChildren();renderMeet();}},x[1]);
+  })));
   if(mi.since!=null){
     var lsTxt=mi.ls.toLocaleDateString('ca',{day:'numeric',month:'long'});
     parts.push(h('div',{class:'msince'},
