@@ -395,7 +395,7 @@ function meetInfo(){
 }
 
 /* vistes del temps que queda */
-var MVIEWS=[['dies','Dies'],['setmanes','Setmanes'],['mesos','Mesos'],['live','En directe'],['caps','Caps de setmana'],['llunes','Llunes plenes'],['peli','Pel·lícules'],['partits','Partits'],['cami','Pel camí']];
+var MVIEWS=[['dies','Dies'],['setmanes','Setmanes'],['mesos','Mesos'],['live','En directe'],['caps','Caps de setmana'],['llunes','Llunes plenes'],['peli','Pel·lícules'],['partits','Partits'],['nits','Bones nits'],['mosaic','Mosaic'],['cami','Pel camí']];
 function getMV(){
   if(S.meetView)return S.meetView;
   var v=null;try{v=localStorage.getItem('meetview');}catch(e){}
@@ -443,6 +443,8 @@ function meetBig(mi){
   if(v==='llunes'){var l=fullMoons(n,mi.d);return {num:String(l),lab:(l===1?'lluna plena':'llunes plenes')+' pel camí (aprox.)',extra:'Sempre és la mateixa lluna per als dos, vagis on vagis.'};}
   if(v==='peli'){return {num:fmtN(ms/36e5/2),lab:'pel·lícules de 2 hores per veure’ns'};}
   if(v==='partits'){return {num:fmtN(ms/6e4/40),lab:'partits de bàsquet de 40 minuts'};}
+  if(v==='nits')return {num:fmtN(days),lab:(days===1?'bona nit':'bones nits')+' per dir-nos abans de veure’ns',extra:'Una cada nit, per molt lluny que sigueu.'};
+  if(v==='mosaic')return {mosaic:true,since:mi.since!=null?mi.since:0,days:days};
   if(v==='cami'){
     var ev=pathEvents(today,mi.d),tot=ev.reduce(function(s,x){return s+x.n;},0);
     return {num:String(tot),lab:(tot===1?'data assenyalada':'dates assenyalades')+' pel camí',path:ev.slice(0,8)};
@@ -472,6 +474,13 @@ function renderMeet(){
   var dtxt=mi.d.toLocaleDateString('ca',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   var mb=meetBig(mi),big;
   if(mi.days===0)big=h('div',{class:'mbig'},'Avui us veieu ',h('span',{class:'heart'},'\u2665'));
+  else if(mb.mosaic){
+    var per=(mb.since+mb.days)>400?7:1,cnt=Math.ceil((mb.since+mb.days)/per),pass=Math.floor(mb.since/per),dots=[],di;
+    for(di=0;di<cnt;di++)dots.push(h('span',{class:'md'+(di<pass?' p':'')+(di===pass?' t':'')}));
+    dots.push(h('span',{class:'md e'},'\u2665'));
+    big=h('div',null,h('div',{class:'mdots',role:'img','aria-label':'Mosaic: '+mb.since+' dies passats i '+mb.days+' per arribar'},dots),
+      h('div',{class:'tiny'},'Cada punt és un '+(per===1?'dia':'setmana')+'. Els rosats ja han passat i el cor és el dia de la retrobada.'));
+  }
   else if(mb.live)big=h('div',null,h('div',{class:'mlive',id:'mlive'},mb.txt),h('div',{class:'mlab'},mb.lab));
   else big=h('div',null,h('div',{class:'mrow'},h('span',{class:'mnum'},mb.num),h('span',{class:'mlab'},mb.lab)),
     mb.extra?h('div',{class:'tiny',style:'margin-top:4px'},mb.extra):null,

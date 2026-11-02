@@ -310,3 +310,10 @@ body.nosc{overflow:hidden}
 .mlive{font:italic 700 clamp(26px,8vw,38px)/1.05 var(--display);color:var(--a);font-variant-numeric:lining-nums tabular-nums}
 .mpath{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .mpi{font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;background:var(--soft);border:1px solid var(--line)}
+
+/* mosaic de dies */
+.mdots{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 8px}
+.md{width:9px;height:9px;border-radius:50%;background:var(--line);flex:none}
+.md.p{background:var(--a)}
+.md.t{background:var(--surface);box-shadow:0 0 0 2px var(--a)}
+.md.e{width:auto;height:auto;background:none;color:var(--a);font-size:13px;line-height:9px;align-self:center}
