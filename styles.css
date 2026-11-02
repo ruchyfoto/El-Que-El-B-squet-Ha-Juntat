@@ -317,3 +317,14 @@ body.nosc{overflow:hidden}
 .md.p{background:var(--a)}
 .md.t{background:var(--surface);box-shadow:0 0 0 2px var(--a)}
 .md.e{width:auto;height:auto;background:none;color:var(--a);font-size:13px;line-height:9px;align-self:center}
+
+/* el món ara mateix */
+.lmap.wmap{aspect-ratio:2/1}
+.lmap .night{fill:#0b0420;opacity:.42;stroke:none}
+:root:not([data-theme="light"]) .lmap .night{opacity:.5}
+.wcols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.wcol{min-width:0;padding:10px 12px;border-radius:14px;background:var(--soft);display:flex;flex-direction:column;gap:2px}
+.wcol .ctime{font:italic 700 30px/1.05 var(--display);font-variant-numeric:lining-nums tabular-nums}
+.wwx{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;margin-top:4px}
+.wico{font-size:20px;line-height:1}
+.wt{font-weight:800;font-size:18px;font-variant-numeric:tabular-nums}

@@ -90,7 +90,7 @@ var T=[
 var QPTS=2,TPTS=1;
 
 
-var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},hugs:[],kisses:[],surprises:[],places:{a:null,b:null},letters:[],offers:[],redeems:[],c4:[],chat:[],chatOpen:false,dates:[],calSel:null,calMonth:null,dateForm:null,ltr:null,openL:null,editPlace:false,lsig:'',colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
+var S={authed:false,setup:false,names:null,cfgLoaded:false,moments:[],rewards:{},answers:[],ai:{},hugs:[],kisses:[],surprises:[],wx:{},places:{a:null,b:null},letters:[],offers:[],redeems:[],c4:[],chat:[],chatOpen:false,dates:[],calSel:null,calMonth:null,dateForm:null,ltr:null,openL:null,editPlace:false,lsig:'',colors:{a:null,b:null},colorsOpen:false,pushOpen:false,pushSub:false,pushSynced:'',who:null,speaker:null,cat:'maca',editNames:false,confirmDel:null,saving:false,sig:''};
 try{S.who=localStorage.getItem('who')||null;}catch(e){}
 
 function h(tag,props){
@@ -531,6 +531,103 @@ function renderMeet(){
 }
 setInterval(function(){if(S.authed&&ready()&&S.who)renderMeet();},30000);
 
+/* ---------- el món ara mateix: dia/nit i temps ---------- */
+var WX_TTL=15*60000;
+function wmo(code,isDay){
+  var c=+code;
+  if(c===0)return isDay?['☀️','Cel serè']:['🌙','Cel serè'];
+  if(c===1)return isDay?['🌤️','Sobretot serè']:['🌙','Sobretot serè'];
+  if(c===2)return ['⛅','Parcialment ennuvolat'];
+  if(c===3)return ['☁️','Ennuvolat'];
+  if(c===45||c===48)return ['🌫️','Boira'];
+  if(c>=51&&c<=57)return ['🌦️','Plugim'];
+  if(c>=61&&c<=67)return ['🌧️',c>=66?'Pluja gelant':'Pluja'];
+  if(c>=71&&c<=77)return ['🌨️','Neu'];
+  if(c>=80&&c<=82)return ['🌦️','Ruixats'];
+  if(c===85||c===86)return ['🌨️','Ruixats de neu'];
+  if(c>=95)return ['⛈️','Tempesta'];
+  return ['🌡️','Temps variable'];
+}
+function wxKey(p){return (+p.lat).toFixed(2)+','+(+p.lon).toFixed(2);}
+function loadWx(p){
+  var k=wxKey(p),c=S.wx[k];
+  if(c&&(c.busy||Date.now()-c.ts<(c.fail?60000:WX_TTL)))return;
+  S.wx[k]={busy:true,ts:Date.now(),t:c&&c.t,code:c&&c.code,day:c&&c.day};
+  fetch('https://api.open-meteo.com/v1/forecast?latitude='+encodeURIComponent(p.lat)+'&longitude='+encodeURIComponent(p.lon)+'&current=temperature_2m,weather_code,is_day&timezone=auto')
+    .then(function(r){if(!r.ok)throw new Error('wx');return r.json();})
+    .then(function(j){var u=j.current||{};S.wx[k]={t:u.temperature_2m,code:u.weather_code,day:u.is_day,ts:Date.now()};renderWorld();})
+    .catch(function(){var o=S.wx[k]||{};S.wx[k]={fail:true,ts:Date.now(),t:o.t,code:o.code,day:o.day};renderWorld();});
+}
+function sunPos(date){
+  var rad=Math.PI/180,n=date.getTime()/864e5+2440587.5-2451545.0;
+  var L=(280.460+0.9856474*n)%360,g=((357.528+0.9856003*n)%360)*rad;
+  var lam=(L+1.915*Math.sin(g)+0.020*Math.sin(2*g))*rad,eps=(23.439-0.0000004*n)*rad;
+  var dec=Math.asin(Math.sin(eps)*Math.sin(lam));
+  var ra=Math.atan2(Math.cos(eps)*Math.sin(lam),Math.cos(lam))/rad;
+  var gmst=(280.46061837+360.98564736629*n)%360;
+  return {lat:dec/rad,lon:((ra-gmst)%360+540)%360-180};
+}
+function nightPath(date){
+  var sp=sunPos(date),rad=Math.PI/180,td=Math.tan(sp.lat*rad);
+  if(Math.abs(td)<1e-6)td=1e-6;
+  var d='',lo,la;
+  for(lo=-180;lo<=180;lo+=2){
+    la=Math.atan(-Math.cos((lo-sp.lon)*rad)/td)/rad;
+    d+=(lo===-180?'M':'L')+(lo+180)+' '+(90-la).toFixed(2);
+  }
+  d+=sp.lat>=0?'L360 180L0 180Z':'L360 0L0 0Z';
+  return {d:d,sun:sp};
+}
+function worldMap(pins,date){
+  var svg=sv('svg',{viewBox:'0 0 360 180',class:'lmap wmap',role:'img','aria-label':'Mapa del món amb el dia i la nit ara mateix',preserveAspectRatio:'xMidYMid meet',style:'aspect-ratio:2/1'});
+  var defs=sv('defs',null,[]),g=sv('linearGradient',{id:'ocean2',x1:'0',y1:'0',x2:'0',y2:'1'});
+  g.append(sv('stop',{offset:'0','stop-color':'var(--ocean1)'}),sv('stop',{offset:'1','stop-color':'var(--ocean2)'}));
+  defs.append(g);svg.append(defs);
+  svg.append(sv('rect',{x:0,y:0,width:360,height:180,fill:'url(#ocean2)'}));
+  var grat='',i;
+  for(i=0;i<=360;i+=30)grat+='M'+i+' 0V180';
+  for(i=0;i<=180;i+=30)grat+='M0 '+i+'H360';
+  svg.append(sv('path',{d:grat,class:'grat','vector-effect':'non-scaling-stroke'}));
+  if(LAND.d)svg.append(sv('path',{d:LAND.d,class:'land'}));
+  var nt=nightPath(date);
+  svg.append(sv('path',{d:nt.d,class:'night'}));
+  svg.append(sv('text',{x:nt.sun.lon+180,y:90-nt.sun.lat,'text-anchor':'middle','dominant-baseline':'central','font-size':'11'},[document.createTextNode('☀️')]));
+  pins.forEach(function(p){
+    var x=+p.pl.lon+180,y=90-p.pl.lat,anchor=x<70?'start':(x>290?'end':'middle'),dx=anchor==='start'?-4:(anchor==='end'?4:0);
+    svg.append(sv('circle',{cx:x,cy:y,r:9,class:'halo',style:'fill:var(--'+p.who+')'}),sv('circle',{cx:x,cy:y,r:4.2,class:'pin',style:'fill:var(--'+p.who+')'}));
+    var tx=sv('text',{x:x+dx,y:y-9,'text-anchor':anchor,class:'plc','font-size':'10'});tx.textContent=p.label;svg.append(tx);
+  });
+  return svg;
+}
+function renderWorld(){
+  var z=$('world');if(!z)return;
+  if(!ready()||!S.who){z.replaceChildren();return;}
+  loadLand();
+  var me=S.who,ot=other(me),pm=S.places[me],po=S.places[ot],now=new Date(),parts=[];
+  if(!pm||!po){
+    z.replaceChildren(h('section',{class:'card'},h('h2',null,'El món ara mateix'),
+      h('p',{class:'tiny',style:'margin:0'},'Perquè surti el mapa de dia i nit i el temps de cada ciutat, cadascú ha de dir on és a l\u2019apartat Cartes.')));
+    return;
+  }
+  [pm,po].forEach(loadWx);
+  var pins=[{pl:pm,who:me,label:shortPlace(pm.name)},{pl:po,who:ot,label:shortPlace(po.name)}];
+  parts.push(worldMap(pins,now));
+  var cols=[];
+  [[me,pm],[ot,po]].forEach(function(x){
+    var who=x[0],pl=x[1],off=placeOff(pl,now),d=new Date(now.getTime()+off*60000),hh=d.getUTCHours(),mm=d.getUTCMinutes();
+    var w=S.wx[wxKey(pl)],day=hh>=7&&hh<21,wl;
+    if(w&&w.t!=null){var m=wmo(w.code,w.day===1||w.day===true||(w.day==null&&day));wl=h('div',{class:'wwx'},h('span',{class:'wico','aria-hidden':'true'},m[0]),h('span',{class:'wt'},Math.round(w.t)+'°'),h('span',{class:'tiny'},m[1]));}
+    else wl=h('div',{class:'tiny'},w&&w.fail?'No puc carregar el temps ara.':'Carregant el temps…');
+    cols.push(h('div',{class:'wcol'},
+      h('div',{class:'nm2'},h('span',{class:'dot',style:'background:var(--'+who+')'}),who===me?'Tu':nm(who)),
+      h('div',{class:'ctime'},pad(hh)+':'+pad(mm)),
+      h('div',{class:'tiny'},shortPlace(pl.name)+' · '+(day?'de dia':'de nit')),wl));
+  });
+  parts.push(h('div',{class:'wcols'},cols),h('p',{class:'tiny',style:'margin:10px 0 0'},'La zona fosca és la nit ara mateix i es mou sola.'));
+  z.replaceChildren(h('section',{class:'card'},h('h2',null,'El món ara mateix'),parts));
+}
+setInterval(function(){if(S.authed&&ready()&&S.who)renderWorld();},60000);
+
 /* ---------- cartes ---------- */
 var TRANSPORTS=[
  {k:'colom',n:'Colom missatger',kmh:55,road:1,over:0,d:'Vola en línia recta, sense pressa.',
@@ -597,7 +694,7 @@ function topoToPath(t){
 function loadLand(){
   if(LAND.state!==0)return;LAND.state=1;
   fetch(LAND_URL).then(function(r){if(!r.ok)throw new Error('land');return r.json();})
-    .then(function(j){LAND.d=topoToPath(j);LAND.state=2;if(S.authed&&ready()&&S.who)renderLetterLists();})
+    .then(function(j){LAND.d=topoToPath(j);LAND.state=2;if(S.authed&&ready()&&S.who){renderLetterLists();renderWorld();}})
     .catch(function(){LAND.state=3;});
 }
 var SVGNS='http://www.w3.org/2000/svg';
@@ -1447,7 +1544,7 @@ function renderAll(){
   $('btn-out').hidden=!S.authed;
   $('btn-colors').hidden=!(S.authed&&ready()&&S.who);
   $('btn-push').hidden=!(S.authed&&ready()&&S.who&&cfg.vapid);
-  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderChat();renderCal();renderGames();renderC4();renderHugs();renderKisses();renderSurpriseCard();checkSurprise();renderShop();renderLetters();renderAdd();renderRewards();renderWall();
+  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderWorld();renderChat();renderCal();renderGames();renderC4();renderHugs();renderKisses();renderSurpriseCard();checkSurprise();renderShop();renderLetters();renderAdd();renderRewards();renderWall();
 }
 
 /* challenge slot lives above the form */
@@ -1566,7 +1663,7 @@ function loadAll(){
     S.ai={};S.answers.forEach(function(a){S.ai[a.day+'|'+a.game+'|'+a.slot+'|'+a.player]=a;});
     if(S.editNames||document.activeElement&&(document.activeElement.id==='phrase'||document.activeElement.id==='qans')){
       renderBoard();renderChallengeCard();renderRewards();renderWall();
-      if(!S.editNames){renderMeet();renderChat();renderCal();renderC4();renderShop();renderGames();renderHugs();renderKisses();renderSurpriseCard();checkSurprise();renderLetters();renderAdd();}
+      if(!S.editNames){renderMeet();renderWorld();renderChat();renderCal();renderC4();renderShop();renderGames();renderHugs();renderKisses();renderSurpriseCard();checkSurprise();renderLetters();renderAdd();}
     }else renderAll();
   }).catch(function(){toast('No he pogut carregar el marcador.');});
 }
