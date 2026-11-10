@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="ca">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Preparar l'advent</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+:root{--bg:#FBF3F1;--surface:#FFFDFC;--fg:#3A1F2B;--muted:#7D6670;--line:#EBD5D5;--soft:#FAEDEA;--acc:#B5365F;--ok:#3E8E62}
+@media (prefers-color-scheme:dark){:root{--bg:#1D0F18;--surface:#2A1521;--fg:#FBE9E6;--muted:#C2A0AC;--line:#4A2A3A;--soft:#231220;--acc:#F0708A;--ok:#6FCB9B}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 Figtree,system-ui,sans-serif;padding:16px}
+main{max-width:640px;margin:0 auto}
+h1{font-family:'Cormorant Garamond',serif;font-size:2rem;margin:8px 0}
+p{margin:6px 0}.muted{color:var(--muted);font-size:.9rem}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px;margin:12px 0}
+.day{border:1px solid var(--line);border-radius:14px;margin:8px 0;background:var(--surface)}
+.day>summary{cursor:pointer;padding:12px 14px;display:flex;gap:10px;align-items:center;list-style:none}
+.day>summary::-webkit-details-marker{display:none}
+.day b{font-family:'Cormorant Garamond',serif;font-size:1.4rem;min-width:30px}
+.day .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.tag{font-size:.75rem;padding:2px 8px;border-radius:99px;background:var(--soft);color:var(--muted)}
+.tag.ok{background:var(--ok);color:#fff}.tag.dr{background:var(--acc);color:#fff}
+.body{padding:0 14px 14px;display:grid;gap:8px}
+input,select,textarea{width:100%;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
+textarea{min-height:120px;resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;font-weight:600;border:0;border-radius:99px;padding:10px 16px;background:var(--acc);color:#fff;cursor:pointer}
+button.s{background:var(--soft);color:var(--fg)}
+button:disabled{opacity:.5}
+#msg{position:sticky;bottom:8px;background:var(--fg);color:var(--bg);border-radius:12px;padding:10px 14px;margin-top:12px;display:none}
+.warn{border-color:var(--acc)}
+</style>
+</head>
+<body>
+<main>
+  <h1>Calendari d'advent</h1>
+  <p class="muted">Pàgina secreta. Aquí escrius les caselles; queden guardades a la base de dades i ella no les pot veure fins a les 00:00 (hora de Madrid) de cada dia. No ensenyis aquesta pantalla a ningú i no la enllacis enlloc.</p>
+  <div id="app"><p>Carregant…</p></div>
+  <div id="msg" role="status"></div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+(function(){
+'use strict';
+var YEAR=2026,cfg=window.PUNTS_CONFIG||{},sb,rows={},to='b',names=(cfg.names&&cfg.names.length===2)?cfg.names:['ella','ell'];
+var KINDS=[['missatge','✉ Missatge'],['pla','🗓 Pla per fer'],['repte','🎯 Repte'],['record','📷 Record'],['regal','🎁 Regalet']];
+var SUG=[
+['missatge','Comença el compte enrere','Bon dia, {nom}. Avui s’obre la primera casella i durant tot el mes tindràs una cosa nova cada dia. Totes volen dir el mateix: que et penso, i molt. T’estimo.'],
+['missatge','Una cosa que m’encanta de tu','Hi ha una cosa teva que no em canso mai de mirar: … (escriu-ho tu, amb detalls: la rialla, com et mous, com em mires).'],
+['pla','Nit de pel·lícula','Quan ens veiem: manta, sofà i la pel·lícula que triïs tu, sense protestar. Jo poso les crispetes i els petons.'],
+['repte','Foto del moment','Envia’m una foto del que estàs veient ara mateix, sigui el que sigui. Vull mirar el teu món per un moment.'],
+['record','El dia que ens vam conèixer','Recordo que … (escriu un record concret del primer cop que ens vam veure). Mai hauria dit que acabaria aquí, amb tu.'],
+['pla','Un cafè sense pressa','El primer matí que siguem junts: cafè llarg, cap rellotge i ni una sola cosa per fer. Només tu i jo.'],
+['missatge','Quan et trobo a faltar','Et trobo a faltar sobretot quan … Però pensar que cada dia és un dia menys ho fa suportable.'],
+['regal','Cupó: massatge','Aquest cupó val per un massatge de peus (o d’espatlles, tu tries) el dia que ens retrobem. Sense data de caducitat.'],
+['repte','Una cançó nostra','Busca una cançó que et recordi a nosaltres i envia-me-la. Jo faré el mateix i demà la escoltem alhora.'],
+['pla','Sopar en videotrucada','Triem la mateixa recepta, cuinem alhora cadascú a casa i sopem junts per la pantalla. Cadascú porta el seu got de vi.'],
+['missatge','Gràcies','Gràcies per esperar-me, per fer-me riure encara que hi hagi un oceà pel mig, i per fer fàcil una cosa que no ho és gens.'],
+['record','La nostra millor tarda','Hi ha una tarda que guardo com un tresor: … (descriu-la). Si pogués tornar a qualsevol moment, aniria allà.'],
+['pla','Una passejada junts','La primera cosa que farem quan ens veiem serà passejar de la mà sense destí. Ja m’imagino el camí.'],
+['repte','Una nota a mà','Escriu-me tres línies a mà en un paper i fes-ne una foto. Vull veure la teva lletra.'],
+['missatge','Sis motius','Sis motius pels quals et trio cada dia: 1) … 2) … 3) … 4) … 5) … 6) …'],
+['pla','El mateix plat','Avui cuinem el mateix plat tots dos, cadascú a casa seva, i després ens expliquem qui l’ha fet millor (guanyo jo).'],
+['regal','Un desig','Aquest cupó val per un desig petit, el que vulguis, el dia que ens retrobem. Pensa-hi bé!'],
+['record','La nostra foto preferida','Tinc una foto nostra preferida: … Busca la teva i digue’m per què t’agrada. Les compararem.'],
+['repte','Un vídeo de 10 segons','Grava’m un vídeo de 10 segons dient-me el que vulguis. L’escoltaré mil vegades.'],
+['pla','Una escapada','Hem de fer una escapada, només tu i jo, a un lloc on no hi hagi horaris. Pensa on t’agradaria anar i m’ho expliques.'],
+['missatge','Dues zones horàries, un cor','Tu ets al futur i jo sóc al passat, però el cor el tinc a l’hora que és a casa teva. T’estimo en qualsevol zona horària.'],
+['pla','Decorar l’arbre','Un dia decorarem junts l’arbre, i et deixaré posar l’estrella perquè és el que més m’agrada veure’t fer.'],
+['missatge','Gairebé és Nadal','Ja falta molt poc. Aquest any no som al mateix lloc, però ets el regal que més vaig desitjar.'],
+['missatge','Bon Nadal, amor','Bon Nadal, {nom}. Gràcies per aquest any i per cada dia que ens queda. Sigui on sigui, jo sempre estic amb tu. T’estimo.'],
+['regal','El regal més gran','El millor regal d’aquest Nadal és saber que aquest any acabarem més a prop del que vam començar. Ja falta menys, {nom}.']
+];
+function $(s,r){return (r||document).querySelector(s);}
+function el(t,a){var e=document.createElement(t),k;a=a||{};for(k in a){if(k==='text')e.textContent=a[k];else if(k.slice(0,2)==='on')e[k]=a[k];else e.setAttribute(k,a[k]);}
+  for(var i=2;i<arguments.length;i++){var c=arguments[i];if(c==null)continue;e.append(c.nodeType?c:document.createTextNode(c));}return e;}
+function say(m){var b=$('#msg');b.textContent=m;b.style.display='block';clearTimeout(say.t);say.t=setTimeout(function(){b.style.display='none';},4000);}
+function who(){return to==='a'?names[0]:names[1];}
+function sug(d){var s=SUG[d-1];return {kind:s[0],title:s[1],body:s[2].replace(/\{nom\}/g,who())};}
+
+function draw(){
+  var app=$('#app');app.replaceChildren();
+  var sel=el('select',{id:'to'},el('option',{value:'a',text:names[0]}),el('option',{value:'b',text:names[1]}));
+  sel.value=to;sel.onchange=function(){
+    if(Object.keys(rows).length){sel.value=to;say('Ja hi ha caselles desades per a '+who()+'. Esborra-les abans de canviar-ho.');return;}
+    to=sel.value;draw();};
+  app.append(el('div',{class:'card warn'},
+    el('p',null,'Les caselles són per a:'),sel,
+    el('p',{class:'muted',text:'Comprova que és ella! Si poses el teu nom, la targeta et sortirà a tu i no a ella.'})));
+  var tools=el('div',{class:'row'},
+    el('button',{class:'s',type:'button',onclick:fillEmpty},'Omple els buits amb suggeriments'),
+    el('button',{type:'button',onclick:saveAll},'Desa-ho tot'));
+  app.append(el('div',{class:'card'},el('p',{class:'muted',text:'Els suggeriments són només una base: edita’ls i posa-hi les teves coses. Res es desa fins que prems “Desa”.'}),tools));
+  for(var d=1;d<=25;d++)app.append(dayEl(d));
+}
+function dayEl(d){
+  var r=rows[d],det=el('details',{class:'day',id:'day'+d});
+  var tag=el('span',{class:'tag'+(r?(r.opened_at?' ok':''):''),text:r?(r.opened_at?'oberta':'desada'):'buida'});
+  var t=el('span',{class:'t',text:r?r.title:''});
+  det.append(el('summary',null,el('b',{text:String(d)}),t,tag));
+  var kind=el('select',{'aria-label':'Tipus'});KINDS.forEach(function(k){kind.append(el('option',{value:k[0],text:k[1]}));});
+  var title=el('input',{type:'text',maxlength:'80',placeholder:'Títol',autocomplete:'off'});
+  var body=el('textarea',{maxlength:'1500',placeholder:'El missatge, el pla, el repte…'});
+  if(r){kind.value=r.kind;title.value=r.title;body.value=r.body;}
+  det._f={kind:kind,title:title,body:body,tag:tag,t:t};
+  function mark(){if(title.value.trim()||body.value.trim()){tag.textContent=(rows[d]&&rows[d].title===title.value.trim()&&rows[d].body===body.value.trim()&&rows[d].kind===kind.value)?(rows[d].opened_at?'oberta':'desada'):'sense desar';tag.className='tag'+(tag.textContent==='sense desar'?' dr':'');}t.textContent=title.value;}
+  title.oninput=body.oninput=kind.onchange=mark;
+  det.append(el('div',{class:'body'},kind,title,body,el('div',{class:'row'},
+    el('button',{type:'button',onclick:function(){saveOne(d).then(function(){say('Casella '+d+' desada.');});}},'Desa'),
+    el('button',{class:'s',type:'button',onclick:function(){var s=sug(d);kind.value=s.kind;title.value=s.title;body.value=s.body;mark();}},'Suggeriment'),
+    el('button',{class:'s',type:'button',onclick:function(){delOne(d);}},'Esborra'))));
+  return det;
+}
+function fillEmpty(){
+  for(var d=1;d<=25;d++){var f=$('#day'+d)._f;if(f.title.value.trim()||f.body.value.trim())continue;
+    var s=sug(d);f.kind.value=s.kind;f.title.value=s.title;f.body.value=s.body;f.t.textContent=s.title;f.tag.textContent='sense desar';f.tag.className='tag dr';}
+  say('Suggeriments posats. Edita’ls i prem “Desa-ho tot”.');
+}
+function saveOne(d){
+  var f=$('#day'+d)._f,title=f.title.value.trim(),body=f.body.value.trim();
+  if(!title&&!body)return Promise.resolve();
+  if(!title||!body){say('A la casella '+d+' falta el títol o el text.');return Promise.reject();}
+  var row={year:YEAR,day:d,to_player:to,kind:f.kind.value,title:title,body:body};
+  return sb.from('pp_advent').upsert(row,{onConflict:'year,day'}).select().single().then(function(r){
+    if(r.error){say('No s’ha pogut desar la casella '+d+': '+r.error.message);throw r.error;}
+    rows[d]=r.data;f.tag.textContent='desada';f.tag.className='tag';
+  });
+}
+function saveAll(){
+  var p=Promise.resolve(),n=0;
+  for(var d=1;d<=25;d++)(function(d){p=p.then(function(){var f=$('#day'+d)._f;if(f.title.value.trim()||f.body.value.trim())n++;return saveOne(d);});})(d);
+  p.then(function(){say('Fet: '+n+' caselles desades.');},function(){});
+}
+function delOne(d){
+  if(!rows[d]){var f=$('#day'+d)._f;f.title.value=f.body.value='';f.t.textContent='';f.tag.textContent='buida';f.tag.className='tag';return;}
+  if(!confirm('Esborrar la casella '+d+'?'))return;
+  sb.from('pp_advent').delete().eq('year',YEAR).eq('day',d).then(function(r){
+    if(r.error){say('No s’ha pogut esborrar: '+r.error.message);return;}
+    delete rows[d];var f=$('#day'+d)._f;f.title.value=f.body.value='';f.t.textContent='';f.tag.textContent='buida';f.tag.className='tag';say('Esborrada.');});
+}
+function start(){
+  if(!window.supabase||!cfg.url||/EL-TEU|LA-TEVA/.test(cfg.url+cfg.key)){$('#app').replaceChildren(el('p',{text:'Falta configurar config.js.'}));return;}
+  sb=window.supabase.createClient(cfg.url,cfg.key);
+  sb.auth.getSession().then(function(r){
+    if(!r.data||!r.data.session){$('#app').replaceChildren(el('div',{class:'card'},el('p',{text:'Primer entra a l’app amb el teu compte i torna a aquesta pàgina.'}),el('p',null,el('a',{href:'./',text:'Obrir l’app'}))));return;}
+    return sb.from('pp_advent').select('*').eq('year',YEAR).order('day',{ascending:true}).then(function(q){
+      if(q.error){$('#app').replaceChildren(el('div',{class:'card'},el('p',{text:'No trobo la taula del calendari. Has executat supabase_advent.sql?'}),el('p',{class:'muted',text:q.error.message})));return;}
+      (q.data||[]).forEach(function(x){rows[x.day]=x;if(x.to_player)to=x.to_player;});
+      draw();
+    });
+  });
+}
+start();
+})();
+</script>
+</body>
+</html>

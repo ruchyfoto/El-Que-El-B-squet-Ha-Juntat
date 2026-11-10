@@ -332,6 +332,47 @@ function renderSurpriseCard(){
   z.replaceChildren(h('section',{class:'card'},h('h2',null,'Sorpresa'),parts));
 }
 
+/* ---------- calendari d'advent (secret: el servidor no envia res fins a l'hora) ---------- */
+var ADVK={missatge:['✉','Un missatge per a tu'],pla:['🗓','Un pla per fer junts'],repte:['🎯','Un repte'],record:['📷','Un record'],regal:['🎁','Un regalet']};
+function adventModal(x){
+  var old=document.getElementById('advm');if(old)old.remove();
+  var k=ADVK[x.kind]||ADVK.missatge;
+  function close(){ov.remove();document.body.classList.remove('nosc');}
+  var btn=h('button',{class:'btn',type:'button',onclick:close},'♥ Tancar');
+  var ov=h('div',{id:'advm',class:'advm',role:'dialog','aria-modal':'true','aria-label':'Casella '+x.day+' del calendari d’advent',onclick:function(e){if(e.target===ov)close();}},
+    h('div',{class:'advbox'},
+      h('div',{class:'advday'},'Casella '+x.day),
+      h('div',{class:'advk'},k[0]+' '+k[1]),
+      h('h3',{class:'advt'},x.title),
+      h('p',{class:'advb'},x.body),
+      btn));
+  document.body.classList.add('nosc');document.body.append(ov);
+  setTimeout(function(){try{btn.focus({preventScroll:true});}catch(e){}},50);
+}
+function renderAdvent(){
+  var z=$('adv');if(!z)return;
+  if(!ready()||!S.who){z.replaceChildren();return;}
+  var mine=(S.advent||[]).filter(function(x){return x.to_player===S.who;});
+  if(!mine.length){z.replaceChildren();return;}   // abans de l'1 de desembre el servidor no envia res: no es veu res
+  var byDay={};mine.forEach(function(x){byDay[x.day]=x;});
+  var cells=[],d,left=0;
+  for(d=1;d<=25;d++){
+    (function(d){
+      var x=byDay[d];
+      if(!x){cells.push(h('div',{class:'advc lock','aria-label':'Casella '+d+', encara tancada'},h('b',null,String(d)),h('i',null,'🔒')));return;}
+      if(!x.opened)left++;
+      cells.push(h('button',{type:'button',class:'advc '+(x.opened?'done':'new'),'aria-label':'Casella '+d+(x.opened?', oberta':', per obrir'),onclick:function(){
+        adventModal(x);
+        if(!x.opened){x.opened=true;api.openAdvent(x.id).catch(function(){});}
+      }},h('b',null,String(d)),h('i',null,x.opened?(ADVK[x.kind]||ADVK.missatge)[0]:'🎁')));
+    })(d);
+  }
+  z.replaceChildren(h('section',{class:'card advent'},
+    h('h2',null,'Calendari d’advent'),
+    h('p',{class:'tiny',style:'margin:0 0 12px'},left?(left===1?'Tens 1 casella per obrir.':'Tens '+left+' caselles per obrir.'):'Has obert totes les caselles d’avui. Demà n’hi haurà una de nova.'),
+    h('div',{class:'advgrid'},cells)));
+}
+
 /* ---------- petons (màxim 3 al dia per persona) ---------- */
 var KISSPTS=1,KISSMAX=3;
 function kissPts(p){
@@ -1544,7 +1585,7 @@ function renderAll(){
   $('btn-out').hidden=!S.authed;
   $('btn-colors').hidden=!(S.authed&&ready()&&S.who);
   $('btn-push').hidden=!(S.authed&&ready()&&S.who&&cfg.vapid);
-  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderWorld();renderChat();renderCal();renderGames();renderC4();renderHugs();renderKisses();renderSurpriseCard();checkSurprise();renderShop();renderLetters();renderAdd();renderRewards();renderWall();
+  renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderWorld();renderChat();renderCal();renderGames();renderC4();renderHugs();renderKisses();renderSurpriseCard();checkSurprise();renderAdvent();renderShop();renderLetters();renderAdd();renderRewards();renderWall();
 }
 
 /* challenge slot lives above the form */
@@ -1588,6 +1629,7 @@ var api={
   sendLetter:function(r){return sb.from('pp_letters').insert(r).then(chk).then(loadAll);},
   readLetter:function(id){return sb.from('pp_letters').update({read_at:new Date().toISOString()}).eq('id',id).is('read_at',null).then(chk).then(loadAll);},
   sendSurprise:function(r){return sb.from('pp_surprises').insert(r).then(chk).then(loadAll);},
+  openAdvent:function(id){return sb.rpc('pp_advent_open',{p_id:id}).then(chk).then(loadAll);},
   seeSurprise:function(id){return sb.from('pp_surprises').update({seen_at:new Date().toISOString()}).eq('id',id).is('seen_at',null).then(chk).then(loadAll);},
   giveKiss:function(){var n=new Date();return sb.from('pp_kisses').insert({kind:'give',from_player:S.who,status:'done',day:dayKey(n)}).then(chk).then(loadAll);},
   askKiss:function(){var n=new Date();return sb.from('pp_kisses').insert({kind:'ask',from_player:S.who,status:'pending',day:dayKey(n)}).then(chk).then(loadAll);},
@@ -1638,7 +1680,8 @@ function loadAll(){
     sb.from('pp_chat').select('*').order('ts',{ascending:false}).limit(200),
     sb.from('pp_dates').select('*'),
     sb.from('pp_kisses').select('*').order('ts',{ascending:false}).limit(500),
-    sb.from('pp_surprises').select('*').order('ts',{ascending:false}).limit(100)
+    sb.from('pp_surprises').select('*').order('ts',{ascending:false}).limit(100),
+    sb.from('pp_advent').select('*').order('day',{ascending:true})
   ]).then(function(rs){
     var c=rs[0].data;
     var fx=cfg.names;
@@ -1657,13 +1700,14 @@ function loadAll(){
     S.dates=(rs[13]&&rs[13].data||[]).map(function(x){var p=x.since?/^(\d{4})-(\d{2})-(\d{2})/.exec(x.since):null;return {id:x.id,title:x.title,repeat:x.repeat,month:x.month,day:+x.day,since:p?{y:+p[1],m:+p[2],d:+p[3]}:null};});
     S.kisses=(rs[14]&&rs[14].data||[]).map(function(x){return {id:x.id,kind:x.kind,from_player:x.from_player,status:x.status,day:x.day,ret_day:x.ret_day,ts:new Date(x.ts).getTime()};});
     S.surprises=(rs[15]&&rs[15].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,to_player:x.to_player,message:x.message,ts:new Date(x.ts).getTime(),seen:!!x.seen_at};});
+    S.advent=(rs[16]&&rs[16].data||[]).map(function(x){return {id:x.id,year:x.year,day:x.day,to_player:x.to_player,kind:x.kind,title:x.title,body:x.body,unlock:new Date(x.unlock_at).getTime(),opened:!!x.opened_at,by_user:x.by_user};});
     S.chat=(rs[12]&&rs[12].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,body:x.body,ts:new Date(x.ts).getTime(),read:!!x.read_at};}).reverse();
     S.c4=(rs[11]&&rs[11].data||[]).map(function(x){return {id:x.id,starter:x.starter,board:x.board,turn:x.turn,status:x.status,winner:x.winner,last_by:x.last_by,moves:+x.moves,ts:new Date(x.ts).getTime()};});
     S.letters=(rs[7].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,to_player:x.to_player,transport:x.transport,distance_km:x.distance_km,body:x.body,sent:new Date(x.sent_at).getTime(),arrive:new Date(x.arrive_at).getTime(),read:!!x.read_at};});
     S.ai={};S.answers.forEach(function(a){S.ai[a.day+'|'+a.game+'|'+a.slot+'|'+a.player]=a;});
     if(S.editNames||document.activeElement&&(document.activeElement.id==='phrase'||document.activeElement.id==='qans')){
       renderBoard();renderChallengeCard();renderRewards();renderWall();
-      if(!S.editNames){renderMeet();renderWorld();renderChat();renderCal();renderC4();renderShop();renderGames();renderHugs();renderKisses();renderSurpriseCard();checkSurprise();renderLetters();renderAdd();}
+      if(!S.editNames){renderMeet();renderWorld();renderChat();renderCal();renderC4();renderShop();renderGames();renderHugs();renderKisses();renderSurpriseCard();checkSurprise();renderAdvent();renderLetters();renderAdd();}
     }else renderAll();
   }).catch(function(){toast('No he pogut carregar el marcador.');});
 }
