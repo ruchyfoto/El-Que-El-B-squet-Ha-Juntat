@@ -647,7 +647,7 @@ function renderWorld(){
   var me=S.who,ot=other(me),pm=S.places[me],po=S.places[ot],now=new Date(),parts=[];
   if(!pm||!po){
     z.replaceChildren(h('section',{class:'card'},h('h2',null,'El món ara mateix'),
-      h('p',{class:'tiny',style:'margin:0'},'Perquè surti el mapa de dia i nit i el temps de cada ciutat, cadascú ha de dir on és a l\u2019apartat Cartes.')));
+      h('p',{class:'tiny',style:'margin:0'},'Perquè surti el mapa de dia i nit i el temps de cada ciutat, cadascú ha de dir on és a la pestanya Missatges, a l\u2019apartat Cartes.')));
     return;
   }
   [pm,po].forEach(loadWx);
@@ -1126,7 +1126,7 @@ function renderChatList(){
   list.replaceChildren.apply(list,out);
   if(atEnd)list.scrollTop=list.scrollHeight;
   S.chStick=false;
-  if(S.chatOpen&&un>0&&!document.hidden&&!S.chReading){
+  if(S.chatOpen&&S.tab==='msg'&&un>0&&!document.hidden&&!S.chReading){
     S.chReading=true;
     api.readChat(other(me)).catch(function(){}).then(function(){S.chReading=false;});
   }
@@ -1576,7 +1576,7 @@ function renderChallengeCard(){
     S.who?h('div',null,h('button',{class:'btn sm',type:'button',onclick:function(){
       S.speaker=S.who;if(reptDone(S.speaker))S.speaker=other(S.who);
       if(!reptDone(S.speaker))S.cat='repte';
-      renderAdd();var f=$('phrase');if(f){f.scrollIntoView({behavior:'smooth',block:'center'});f.focus({preventScroll:true});}
+      setTab('punts',true);renderAdd();var f=$('phrase');if(f){f.scrollIntoView({behavior:'smooth',block:'center'});f.focus({preventScroll:true});}
     }},'Apunta\'l')):null));
 }
 
@@ -1585,13 +1585,52 @@ function renderAll(){
   $('btn-out').hidden=!S.authed;
   $('btn-colors').hidden=!(S.authed&&ready()&&S.who);
   $('btn-push').hidden=!(S.authed&&ready()&&S.who&&cfg.vapid);
+  renderTabs();
   renderTop();renderBoard();renderColors();renderPush();syncPush();renderChallengeCard();renderMeet();renderWorld();renderChat();renderCal();renderGames();renderC4();renderHugs();renderKisses();renderSurpriseCard();checkSurprise();renderAdvent();renderShop();renderLetters();renderAdd();renderRewards();renderWall();
+}
+
+/* ---------- pestanyes (per tenir l'app ordenada) ---------- */
+var TABS=[['inici','🏠','Inici'],['punts','🏀','Punts'],['jocs','🎮','Jocs'],['msg','💬','Missatges'],['mimos','💞','Mimos']];
+try{S.tab=localStorage.getItem('pp_tab')||'inici';}catch(e){S.tab='inici';}
+if(!TABS.some(function(t){return t[0]===S.tab;}))S.tab='inici';
+function tabCounts(){
+  var me=S.who,c={};
+  if(!ready()||!me)return c;
+  var ot=other(me),now=Date.now();
+  c.msg=chatUnread()+S.letters.filter(function(x){return x.to_player===me&&x.arrive<=now&&!x.read;}).length;
+  c.mimos=S.hugs.filter(function(x){return x.kind==='ask'&&x.status==='pending'&&x.from_player===ot;}).length+
+    S.kisses.filter(function(x){return x.kind==='ask'&&x.status==='pending'&&x.from_player===ot;}).length;
+  c.jocs=S.c4.filter(function(x){return x.status==='playing'&&x.turn===me;}).length+((S.ai&&S.ai[dayKey(new Date())+'|q|0|'+me])?0:1);
+  c.punts=S.redeems.filter(function(x){return x.offerer===me&&x.status==='pending';}).length;
+  c.inici=(S.advent||[]).filter(function(x){return x.to_player===me&&!x.opened;}).length;
+  return c;
+}
+function setTab(t,keepScroll){
+  if(!TABS.some(function(x){return x[0]===t;}))t='inici';
+  S.tab=t;try{localStorage.setItem('pp_tab',t);}catch(e){}
+  Array.prototype.forEach.call(document.querySelectorAll('.pane'),function(p){p.hidden=p.getAttribute('data-pane')!==t;});
+  renderTabs();
+  if(!keepScroll)window.scrollTo(0,0);
+  if(t==='msg'&&ready()&&S.who)renderChat();
+}
+function renderTabs(){
+  var nav=$('tabbar');if(!nav)return;
+  var on=S.authed&&ready()&&S.who;
+  nav.hidden=!on;document.body.classList.toggle('hastabs',!!on);
+  Array.prototype.forEach.call(document.querySelectorAll('.pane'),function(p){p.hidden=p.getAttribute('data-pane')!==S.tab;});
+  if(!on){nav.replaceChildren();return;}
+  var c=tabCounts();
+  nav.replaceChildren.apply(nav,TABS.map(function(t){
+    var n=c[t[0]]||0,cur=S.tab===t[0];
+    return h('button',{type:'button',class:'tab'+(cur?' on':''),'aria-current':cur?'page':'false','aria-label':t[2]+(n?', '+n+' pendent'+(n===1?'':'s'):''),onclick:function(){setTab(t[0]);}},
+      h('span',{class:'ti','aria-hidden':'true'},t[1]),h('span',{class:'tl'},t[2]),n?h('span',{class:'tbd','aria-hidden':'true'},String(n)):null);
+  }));
 }
 
 /* challenge slot lives above the form */
 (function(){var z=document.createElement('div');z.id='challenge';$('board').after(z);})();
 
-$('btn-letter').addEventListener('click',function(){var z=$('letters');z.scrollIntoView({behavior:'smooth',block:'start'});var t=document.getElementById('ltext')||document.getElementById('cityq');if(t)setTimeout(function(){try{t.focus({preventScroll:true});}catch(e){}},400);});
+$('btn-letter').addEventListener('click',function(){setTab('msg',true);var z=$('letters');z.scrollIntoView({behavior:'smooth',block:'start'});var t=document.getElementById('ltext')||document.getElementById('cityq');if(t)setTimeout(function(){try{t.focus({preventScroll:true});}catch(e){}},400);});
 $('btn-names').addEventListener('click',function(){S.editNames=!S.editNames;renderTop();});
 
 /* ---------- Supabase ---------- */
@@ -1706,7 +1745,7 @@ function loadAll(){
     S.letters=(rs[7].data||[]).map(function(x){return {id:x.id,from_player:x.from_player,to_player:x.to_player,transport:x.transport,distance_km:x.distance_km,body:x.body,sent:new Date(x.sent_at).getTime(),arrive:new Date(x.arrive_at).getTime(),read:!!x.read_at};});
     S.ai={};S.answers.forEach(function(a){S.ai[a.day+'|'+a.game+'|'+a.slot+'|'+a.player]=a;});
     if(S.editNames||document.activeElement&&(document.activeElement.id==='phrase'||document.activeElement.id==='qans')){
-      renderBoard();renderChallengeCard();renderRewards();renderWall();
+      renderTabs();renderBoard();renderChallengeCard();renderRewards();renderWall();
       if(!S.editNames){renderMeet();renderWorld();renderChat();renderCal();renderC4();renderShop();renderGames();renderHugs();renderKisses();renderSurpriseCard();checkSurprise();renderAdvent();renderLetters();renderAdd();}
     }else renderAll();
   }).catch(function(){toast('No he pogut carregar el marcador.');});
