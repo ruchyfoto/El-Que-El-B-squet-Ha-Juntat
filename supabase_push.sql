@@ -46,13 +46,15 @@ create or replace function public.pp_notify() returns trigger
 language plpgsql security definer set search_path = public, extensions as $$
 declare c record;
 begin
-  select * into c from public.pp_push_cfg where id = 1;
-  if c.url is null then return new; end if;
   begin
+    select * into c from public.pp_push_cfg where id = 1;
+    if c.url is null then return new; end if;
     perform net.http_post(
       url := c.url,
       headers := jsonb_build_object('Content-Type', 'application/json', 'x-pp-secret', c.secret),
-      body := jsonb_build_object('type', 'INSERT', 'table', tg_table_name, 'record', to_jsonb(new))
+      body := jsonb_build_object(
+        'type', tg_op, 'table', tg_table_name, 'record', to_jsonb(new),
+        'old_record', case when tg_op = 'UPDATE' then to_jsonb(old) else null end)
     );
   exception when others then
     null; -- un error d'avís no ha de fer fallar mai el desat
