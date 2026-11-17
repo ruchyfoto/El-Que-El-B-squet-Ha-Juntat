@@ -1,14 +1,26 @@
 {
-  "name": "El que el bàsquet ha juntat",
-  "short_name": "Bàsquet",
+  "name": "RouteaM",
+  "short_name": "RouteaM",
+  "description": "Rutina d'entrenament en parella amb calendari, cronòmetre, dieta i seguiment.",
   "lang": "ca",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#4A1630",
-  "theme_color": "#4A1630",
+  "orientation": "portrait",
+  "background_color": "#F2F6FF",
+  "theme_color": "#2F5BFF",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
   ]
 }
